@@ -78,13 +78,13 @@ class ChatRequest(BaseModel):
 
 
 llm = ChatOllama(
-    model="qwen2.5-coder:3b",
+    model="qwen2.5-coder:7b",
     temperature=0.0,
     base_url="http://127.0.0.1:11434",
 )
 
 vision_llm = ChatOllama(
-    model="qwen3.5:4b",
+    model="moondream",
     temperature=0.0,
     base_url="http://127.0.0.1:11434",
 )
@@ -298,3 +298,80 @@ async def listen_to_system_audio():
     finally:
         if temp_audio_path and os.path.exists(temp_audio_path):
             os.remove(temp_audio_path)
+
+
+import re
+
+def extract_code_block(text: str) -> str:
+    if not text:
+        return ""
+
+    # 1. Try to extract triple backtick code blocks (```...```)
+    code_blocks = re.findall(r"```(?:\w+)?\n(.*?)```", text, re.DOTALL)
+
+    if code_blocks:
+        # Return the largest block (usually the main one)
+        return max(code_blocks, key=len).strip()
+
+    # 2. Fallback: inline backticks (`code`)
+    inline_code = re.findall(r"`([^`]*)`", text)
+    if inline_code:
+        return "\n".join(inline_code).strip()
+
+    # 3. Heuristic: remove common fluff phrases
+    cleaned = re.sub(
+        r"(Here('|’)s.*?:|Sure.*?:|This code.*?:|Explanation.*?:)",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    return cleaned
+
+@app.post("/agent/vision")
+async def execute_vision_command(request: ChatRequest):
+    print("\n📸 Capturing screen...")
+    try:
+        screenshot = ImageGrab.grab()
+        
+        buffered = BytesIO()
+        screenshot.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        
+        user_text = request.messages[-1].content if request.messages else "Explain the code."
+        print(f"🧠 Sending image to Moondream with prompt: '{user_text}'")
+        
+        # 1. COMBINE PROMPTS: Small models struggle with separate SystemMessages.
+        # We merge the Staff Engineer rules directly into the user's prompt.
+        combined_prompt = f"{CODING_SYSTEM_PROMPT}\n\nUSER COMMAND: {user_text}"
+        
+        messages = [
+            HumanMessage(
+                content=[
+                    {"type": "text", "text": combined_prompt},
+                    {
+                        "type": "image_url", 
+                        "image_url": {"url": f"data:image/png;base64,{img_str}"}
+                    }
+                ]
+            )
+        ]
+        
+        # 2. Invoke the vision model
+        raw_response = vision_llm.invoke(messages).content
+        
+        # 3. PRINT THE RAW OUTPUT to the terminal so we can debug it!
+        print(f"🤖 RAW AI RESPONSE:\n{raw_response}\n")
+        
+        # 4. Strip out conversational fluff
+        clean_code = extract_code_block(raw_response)
+        
+        # Failsafe if the regex strips too much
+        if not clean_code:
+            clean_code = raw_response if raw_response else "Error: The model returned a blank response."
+            
+        return {"status": "success", "response": clean_code}
+
+    except Exception as e:
+        print(f"❌ Vision Error: {e}")
+        return {"status": "error", "response": f"Failed to analyze screen: {str(e)}"}
