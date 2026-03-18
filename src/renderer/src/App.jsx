@@ -14,7 +14,8 @@ function App() {
   const mediaRecorderRef = useRef(null)
   const mediaStreamRef = useRef(null)
   const audioChunksRef = useRef([])
-  const [showVisionMenu, setShowVisionMenu] = useState(true)
+  const [showVisionMenu, setShowVisionMenu] = useState(false)
+  const recordingStartTimeRef = useRef(null)
 
   useEffect(() => {
     if (window.api && window.api.onFocusInput) {
@@ -130,16 +131,19 @@ function App() {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Voice recording is not supported in this environment.' }
+        { role: 'assistant', content: 'Voice recording is not supported.' }
       ])
       return
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      if (!mediaStreamRef.current) {
+        mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true })
+      }
+
+      const stream = mediaStreamRef.current
       const recorder = new MediaRecorder(stream)
 
-      mediaStreamRef.current = stream
       mediaRecorderRef.current = recorder
       audioChunksRef.current = []
 
@@ -152,25 +156,29 @@ function App() {
       recorder.onstop = async () => {
         const chunks = audioChunksRef.current
         audioChunksRef.current = []
-        stopMediaStream()
 
-        if (!chunks.length) {
-          return
+        // --- NEW: Check how long the recording was ---
+        const recordingDuration = Date.now() - recordingStartTimeRef.current
+        if (recordingDuration < 500) {
+          console.warn('Recording too short, ignoring.')
+          return // Abort if it was just a quick accidental click
         }
+
+        if (!chunks.length) return
 
         const audioBlob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
         await sendVoiceMessage(audioBlob)
-        1
       }
 
       recorder.start()
       setIsRecording(true)
+      recordingStartTimeRef.current = Date.now() // Record the exact start time
     } catch (error) {
       stopMediaStream()
       setIsRecording(false)
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Microphone permission denied or unavailable.' }
+        { role: 'assistant', content: 'Microphone permission denied.' }
       ])
     }
   }
@@ -185,7 +193,14 @@ function App() {
     if (!recorder || recorder.state === 'inactive') return
 
     setIsRecording(false)
-    recorder.stop()
+
+    // THE FIX: Wait 400ms before actually killing the recording
+    // to catch the final syllable of your last word!
+    setTimeout(() => {
+      if (recorder.state !== 'inactive') {
+        recorder.stop()
+      }
+    }, 400)
   }
 
   const handleKeyDown = async (e) => {
@@ -234,6 +249,34 @@ function App() {
       e.currentTarget.releasePointerCapture(e.pointerId)
     }
     dragStateRef.current = null
+  }
+
+  const captureSystemAudio = async () => {
+    setIsThinking(true)
+    setInput('Listening to system audio (10s)...')
+
+    try {
+      const res = await fetch('http://127.0.0.1:8000/agent/listen-system', {
+        method: 'POST'
+      })
+      const data = await res.json()
+
+      if (data.status === 'success' && data.transcript) {
+        // Drop what the other person said directly into your chat!
+        setMessages((prev) => [
+          ...prev,
+          { role: 'user', content: `🎧 [System Audio]: ${data.transcript}` }
+        ])
+        setInput('') // Clear the input box
+      } else {
+        setInput('Could not hear any system audio.')
+      }
+    } catch (error) {
+      console.error(error)
+      setInput('Error capturing system audio.')
+    } finally {
+      setIsThinking(false)
+    }
   }
 
   const handleVisionSelect = async (mode) => {
@@ -436,7 +479,7 @@ function App() {
                   ? 'Thinking...'
                   : 'Ask your assistant...'
             }
-            className={`w-full p-4 pl-14 pr-12 text-xl rounded-2xl shadow-2xl backdrop-blur-md outline-none border transition-all font-sans cursor-text
+            className={`w-full p-4 pl-14 pr-20 text-xl rounded-2xl shadow-2xl backdrop-blur-md outline-none border transition-all font-sans cursor-text
               ${
                 isThinking || isRecording
                   ? 'bg-gray-800/80 text-gray-400 border-blue-500/50 animate-pulse'
@@ -453,7 +496,29 @@ function App() {
           >
             X
           </button>
-          {/* <div className="absolute right-20 top-1/2 -translate-y-1/2">
+          {/* <button
+            onClick={captureSystemAudio}
+            disabled={isThinking || isRecording}
+            onPointerDown={(e) => e.stopPropagation()}
+            className={`absolute right-12 top-1/2 -translate-y-1/2 z-20 p-2 text-gray-500 hover:text-purple-400 transition-colors ${
+              isThinking || isRecording ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+            }`}
+            title="Wiretap System Audio (10s)"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              className="w-6 h-6"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+              <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+            </svg>
+          </button> */}
+          <div className="absolute right-20 top-1/2 -translate-y-1/2">
             {showVisionMenu && (
               <div className="absolute bottom-full right-0 mb-4 w-32 bg-gray-800/95 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl overflow-hidden flex flex-col font-sans animate-fade-in-up">
                 <button
@@ -503,7 +568,7 @@ function App() {
             >
               👁️
             </button>
-          </div> */}
+          </div>
         </div>
 
         <div className="w-[700px] mt-3 text-right text-xs text-gray-500">
