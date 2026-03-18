@@ -12,10 +12,13 @@ from pydantic import BaseModel, Field
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 
-from PIL import ImageGrab
+from PIL import ImageGrab, Image
 import numpy as np
 import soundcard as sc
 import soundfile as sf
+import requests
+import re
+
 
 try:
     from faster_whisper import WhisperModel
@@ -78,16 +81,16 @@ class ChatRequest(BaseModel):
 
 
 llm = ChatOllama(
-    model="qwen2.5-coder:7b",
+    model="qwen2.5-coder:3b",
     temperature=0.0,
     base_url="http://127.0.0.1:11434",
 )
 
-vision_llm = ChatOllama(
-    model="moondream",
-    temperature=0.0,
-    base_url="http://127.0.0.1:11434",
-)
+# vision_llm = ChatOllama(
+#     model="moondream",
+#     temperature=0.0,
+#     base_url="http://127.0.0.1:11434",
+# )
 
 whisper_model = None
 
@@ -299,79 +302,212 @@ async def listen_to_system_audio():
         if temp_audio_path and os.path.exists(temp_audio_path):
             os.remove(temp_audio_path)
 
+from textblob import TextBlob
 
-import re
+def clean_command(command: str) -> str:
+    try:
+        corrected = str(TextBlob(command).correct())
+        return corrected
+    except:
+        return command
 
+# -----------------------------
+# Extract Code Block
+# -----------------------------
 def extract_code_block(text: str) -> str:
     if not text:
         return ""
 
-    # 1. Try to extract triple backtick code blocks (```...```)
     code_blocks = re.findall(r"```(?:\w+)?\n(.*?)```", text, re.DOTALL)
-
     if code_blocks:
-        # Return the largest block (usually the main one)
         return max(code_blocks, key=len).strip()
 
-    # 2. Fallback: inline backticks (`code`)
-    inline_code = re.findall(r"`([^`]*)`", text)
-    if inline_code:
-        return "\n".join(inline_code).strip()
+    return text.strip()
 
-    # 3. Heuristic: remove common fluff phrases
-    cleaned = re.sub(
-        r"(Here('|’)s.*?:|Sure.*?:|This code.*?:|Explanation.*?:)",
-        "",
-        text,
-        flags=re.IGNORECASE,
-    ).strip()
+import pytesseract
+import os
 
-    return cleaned
+TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
+if not os.path.exists(TESSERACT_PATH):
+    raise RuntimeError(f"Tesseract not found at {TESSERACT_PATH}")
+
+pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+
+# -----------------------------
+# OCR Text Extraction
+# -----------------------------
+def extract_text_from_image(image: Image.Image) -> str:
+    # Convert to grayscale
+    image = image.convert("L")
+
+    # 🔥 Increase contrast (huge improvement)
+    import cv2
+    import numpy as np
+
+    img_np = np.array(image)
+    img_np = cv2.threshold(img_np, 150, 255, cv2.THRESH_BINARY)[1]
+
+    # Resize for clarity
+    img_np = cv2.resize(img_np, (1200, 1200))
+
+    text = pytesseract.image_to_string(img_np)
+
+    return text
+
+# -----------------------------
+# Command Extraction
+# -----------------------------
+import re
+
+def extract_command(text: str):
+    lines = text.split("\n")
+
+    for line in lines:
+        raw = line.strip().lower()
+
+        # 🔥 Normalize weird OCR symbols
+        normalized = raw.replace("[", "/").replace("\\", "/")
+
+        # 🔥 Detect patterns like /// or corrupted variants
+        if re.search(r"/{2,}|/\[|//", normalized):
+            # Remove leading junk symbols
+            command = re.sub(r"^[^a-z]+", "", normalized)
+
+            # Clean multiple slashes
+            command = command.replace("/", " ").strip()
+
+            return command
+
+    return None
+
+import subprocess
+import tempfile
+
+def format_code_with_prettier(code: str) -> str:
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jsx", mode="w", encoding="utf-8") as f:
+            f.write(code)
+            temp_path = f.name
+
+        subprocess.run(
+            ["npx", "prettier", "--write", temp_path],
+            capture_output=True
+        )
+
+        with open(temp_path, "r", encoding="utf-8") as f:
+            formatted = f.read()
+
+        return formatted
+    except:
+        return code
+
+# -----------------------------
+# Vision Endpoint
+# -----------------------------
 @app.post("/agent/vision")
 async def execute_vision_command(request: ChatRequest):
     print("\n📸 Capturing screen...")
+
     try:
+        # 1. Capture screen
         screenshot = ImageGrab.grab()
+
+        # 2. OCR (🔥 KEY STEP)
+        ocr_text = extract_text_from_image(screenshot)
+        print("🧾 OCR TEXT:\n", ocr_text)
+
+        # 3. Extract command
+        command = extract_command(ocr_text)
+
+        if not command:
+            print("❌ No command found")
+            return {
+                "status": "no_task",
+                "response": "No /// command detected"
+            }
         
-        buffered = BytesIO()
-        screenshot.save(buffered, format="PNG")
-        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-        
-        user_text = request.messages[-1].content if request.messages else "Explain the code."
-        print(f"🧠 Sending image to Moondream with prompt: '{user_text}'")
-        
-        # 1. COMBINE PROMPTS: Small models struggle with separate SystemMessages.
-        # We merge the Staff Engineer rules directly into the user's prompt.
-        combined_prompt = f"{CODING_SYSTEM_PROMPT}\n\nUSER COMMAND: {user_text}"
-        
-        messages = [
-            HumanMessage(
-                content=[
-                    {"type": "text", "text": combined_prompt},
-                    {
-                        "type": "image_url", 
-                        "image_url": {"url": f"data:image/png;base64,{img_str}"}
-                    }
-                ]
-            )
-        ]
-        
-        # 2. Invoke the vision model
-        raw_response = vision_llm.invoke(messages).content
-        
-        # 3. PRINT THE RAW OUTPUT to the terminal so we can debug it!
-        print(f"🤖 RAW AI RESPONSE:\n{raw_response}\n")
-        
-        # 4. Strip out conversational fluff
-        clean_code = extract_code_block(raw_response)
-        
-        # Failsafe if the regex strips too much
-        if not clean_code:
-            clean_code = raw_response if raw_response else "Error: The model returned a blank response."
-            
-        return {"status": "success", "response": clean_code}
+        # 🔥 FIX OCR mistakes
+        command = clean_command(command)
+
+        print(f"🎯 COMMAND: {command}")
+        return {
+            "status": "needs_confirmation",
+            "command": command,
+            "response": None   # 🔥 important
+        }
 
     except Exception as e:
-        print(f"❌ Vision Error: {e}")
-        return {"status": "error", "response": f"Failed to analyze screen: {str(e)}"}
+        print(f"❌ Error: {e}")
+        return {
+            "status": "error",
+            "response": str(e)
+        }
+
+
+clean_code = ""   
+@app.post("/agent/confirm")
+async def confirm_and_execute(data: dict):
+    command = data.get("command", "")
+
+    if not command:
+        return {"status": "error", "response": "No command provided"}
+
+    prompt = f"""
+You are a senior software engineer.
+
+Task:
+{command}
+
+Rules:
+- Use proper indentation
+- Use line breaks correctly
+- Follow clean formatting
+- No inline compressed code
+- Code must be readable and production-ready
+- Always use multi-line formatting (no one-liners)
+- If the user asks for code, output ONLY the markdown code block.
+- Handle edge cases efficiently.
+"""
+
+    try:
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "qwen2.5-coder:3b",
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,
+                    "num_predict": 1500
+                }
+            }
+        )
+
+        result = response.json()
+
+        raw = result.get("response", "")
+
+        if not raw:
+            return {
+                "status": "error",
+                "response": "LLM returned empty response"
+            }
+
+        clean_code = extract_code_block(raw)
+
+        if not clean_code:
+            clean_code = raw  # fallback
+
+        clean_code = format_code_with_prettier(clean_code)
+
+        return {
+            "status": "success",
+            "response": clean_code
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "response": str(e)
+        }

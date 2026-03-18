@@ -16,6 +16,7 @@ function App() {
   const audioChunksRef = useRef([])
   const [showVisionMenu, setShowVisionMenu] = useState(false)
   const recordingStartTimeRef = useRef(null)
+  const [pendingCommand, setPendingCommand] = useState(null)
 
   useEffect(() => {
     if (window.api && window.api.onFocusInput) {
@@ -204,12 +205,12 @@ function App() {
   }
 
   const handleKeyDown = async (e) => {
-    if (e.key === 'Escape') {
-      closeOverlay()
-    }
-
-    if (e.key === 'Enter' && input.trim() && !isThinking && !isRecording) {
-      await sendTextMessage(input.trim())
+    if (e.key === 'Enter' && !isThinking && !isRecording) {
+      if (pendingCommand !== null) {
+        await confirmVisionCommand()
+      } else if (input.trim()) {
+        await sendTextMessage(input.trim())
+      }
     }
   }
 
@@ -328,20 +329,18 @@ function App() {
       })
       const data = await res.json()
 
-      if (data.status === 'success') {
-        setMessages((prev) => [...prev, { role: 'assistant', content: data.response }])
+      if (data.status === 'needs_confirmation') {
+        setPendingCommand(data.command)
 
-        // NESTED TRY-CATCH: Prevents TTS crashes from ruining the chat UI
-        try {
-          if (window.speechSynthesis) speakResponse(data.response)
-        } catch (ttsError) {
-          console.warn('TTS Engine failed to read the response.', ttsError)
-        }
-      } else {
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: `Backend Error: ${data.response}` }
+          {
+            role: 'assistant',
+            content: `✏️ Edit command:\n\n${data.command}`
+          }
         ])
+      } else if (data.status === 'success') {
+        setMessages((prev) => [...prev, { role: 'assistant', content: data.response }])
       }
     } catch (error) {
       // This will now ONLY trigger if the Python server is actually offline
@@ -350,6 +349,42 @@ function App() {
         { role: 'assistant', content: 'Network Error: Could not reach the AI backend.' }
       ])
     } finally {
+      setIsThinking(false)
+    }
+  }
+
+  const confirmVisionCommand = async () => {
+    if (!pendingCommand) return
+
+    setIsThinking(true)
+
+    // show user message
+    setMessages((prev) => [...prev, { role: 'user', content: `✅ ${pendingCommand}` }])
+
+    try {
+      const res = await fetch('http://127.0.0.1:8000/agent/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: pendingCommand })
+      })
+
+      const data = await res.json()
+
+      if (data.status === 'success') {
+        setMessages((prev) => [...prev, { role: 'assistant', content: data.response }])
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: '❌ Failed to execute command' }
+        ])
+      }
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: '❌ Network error during execution' }
+      ])
+    } finally {
+      setPendingCommand(null)
       setIsThinking(false)
     }
   }
@@ -466,8 +501,14 @@ function App() {
           <input
             ref={inputRef}
             type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
+            value={pendingCommand !== null ? pendingCommand : input}
+            onChange={(e) => {
+              if (pendingCommand !== null) {
+                setPendingCommand(e.target.value)
+              } else {
+                setInput(e.target.value)
+              }
+            }}
             onKeyDown={handleKeyDown}
             disabled={isThinking || isRecording}
             // STOP the drag if you click inside the input box
