@@ -292,7 +292,7 @@ function App() {
         break
       case 'fix':
         systemPrompt =
-          'Analyze the code on my screen, find any bugs or syntax errors, and output ONLY the corrected code.'
+          'Analyze the code on my screen, find any syntax or logical bugs, and fix them.'
         break
       case 'help':
         systemPrompt =
@@ -365,7 +365,11 @@ function App() {
       const res = await fetch('http://127.0.0.1:8000/agent/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: pendingCommand })
+        // body: JSON.stringify({ command: pendingCommand })
+        body: JSON.stringify({
+          command: pendingCommand,
+          mode: 'create' // Pass the mode state here!
+        })
       })
 
       const data = await res.json()
@@ -580,7 +584,7 @@ function App() {
                 >
                   🛠️ Fix
                 </button>
-                <button
+                {/* <button
                   onPointerDown={(e) => {
                     e.stopPropagation()
                     handleVisionSelect('help')
@@ -588,7 +592,7 @@ function App() {
                   className="px-4 py-3 text-sm text-gray-200 hover:bg-yellow-600 hover:text-white text-left transition-colors border-b border-gray-700"
                 >
                   🆘 Help
-                </button>
+                </button> */}
                 <button
                   onPointerDown={(e) => {
                     e.stopPropagation()

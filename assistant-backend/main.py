@@ -20,6 +20,92 @@ import requests
 import re
 
 
+import tkinter as tk
+from PIL import ImageGrab
+
+
+def load_env_file(path: str) -> None:
+    if not os.path.exists(path):
+        return
+
+    with open(path, "r", encoding="utf-8") as env_file:
+        for line in env_file:
+            raw = line.strip()
+            if not raw or raw.startswith("#") or "=" not in raw:
+                continue
+
+            key, value = raw.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_env_file(os.path.join(BASE_DIR, ".env"))
+
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+
+
+class SnippingTool:
+    def __init__(self):
+        self.root = tk.Tk()
+        # Make the window semi-transparent and fullscreen
+        self.root.attributes('-alpha', 0.3)
+        self.root.attributes('-fullscreen', True)
+        self.root.attributes('-topmost', True) # Keep on top of everything
+        self.root.config(cursor="cross")
+        
+        self.canvas = tk.Canvas(self.root, cursor="cross", bg="black")
+        self.canvas.pack(fill="both", expand=True)
+        
+        self.canvas.bind("<ButtonPress-1>", self.on_press)
+        self.canvas.bind("<B1-Motion>", self.on_drag)
+        self.canvas.bind("<ButtonRelease-1>", self.on_release)
+        
+        self.start_x = None
+        self.start_y = None
+        self.rect = None
+        self.bbox = None
+
+    def on_press(self, event):
+        self.start_x = self.canvas.canvasx(event.x)
+        self.start_y = self.canvas.canvasy(event.y)
+        # Create the red bounding box
+        self.rect = self.canvas.create_rectangle(
+            self.start_x, self.start_y, 1, 1, outline='red', width=3, fill="black"
+        )
+
+    def on_drag(self, event):
+        curX, curY = (event.x, event.y)
+        # Update the box size as you drag
+        self.canvas.coords(self.rect, self.start_x, self.start_y, curX, curY)
+
+    def on_release(self, event):
+        # Save the coordinates and destroy the overlay
+        self.bbox = (
+            min(self.start_x, event.x), 
+            min(self.start_y, event.y), 
+            max(self.start_x, event.x), 
+            max(self.start_y, event.y)
+        )
+        self.root.destroy()
+
+def get_screen_snip():
+    """Opens the snipping overlay and returns the cropped Image."""
+    snipper = SnippingTool()
+    snipper.root.mainloop()
+    
+    # If the user drew a box larger than 10x10 pixels, crop it
+    if snipper.bbox and (snipper.bbox[2] - snipper.bbox[0] > 10) and (snipper.bbox[3] - snipper.bbox[1] > 10):
+        return ImageGrab.grab(snipper.bbox)
+        
+    # Fallback: If they just clicked without dragging, grab the whole screen
+    return ImageGrab.grab()
+
+
 try:
     from faster_whisper import WhisperModel
 except ImportError:
@@ -38,15 +124,39 @@ np.fromstring = _safe_fromstring
 # ---------------------------------------------
 
 
-CODING_SYSTEM_PROMPT = """
-You are an elite, silent Staff Software Engineer.
-Your ONLY function is to output highly optimized, production-ready code.
+# CODING_SYSTEM_PROMPT = """
+# You are an elite, silent Staff Software Engineer.
+# Your ONLY function is to output highly optimized, production-ready code.
 
-CRITICAL RULES:
-1. DEFAULT BEHAVIOR: Output ONLY highly optimized, production-ready code in a markdown block. No greetings, no fluff, no explanations.
-2. If the user asks for code, output ONLY the markdown code block.
-3. Handle edge cases efficiently.
-4. CONDITIONAL EXPLANATIONS: ONLY provide explanations IF explicitly asked.
+# CRITICAL RULES:
+# 1. DEFAULT BEHAVIOR: Output ONLY highly optimized, production-ready code in a markdown block. No greetings, no fluff, no explanations.
+# 2. If the user asks for code, output ONLY the markdown code block.
+# 3. Handle edge cases efficiently.
+# 4. CONDITIONAL EXPLANATIONS: ONLY provide explanations IF explicitly asked.
+# """
+
+
+CODING_SYSTEM_PROMPT = """
+You are an elite Principal Full Stack AI Engineer and Systems Architect.
+
+YOUR CORE TECH STACK:
+- Backend: Python, FastAPI
+- Frontend: React, JavaScript, modern web standards
+- Cloud & DevOps: AWS, Azure, GCP, Docker, Kubernetes, CI/CD pipelines
+- AI/ML: Generative AI, Advanced RAG, LangGraph, Vector DBs, LiteLLM, AWS Bedrock
+
+YOUR CODING STANDARDS (WHITE CODING):
+1. Write extremely clean, modular, and scalable code.
+2. Always include proper error handling, type hinting (in Python), and edge-case management.
+3. Prioritize security, maintainability, and enterprise-grade architecture.
+4. When designing systems, think about state management, latency, and resource efficiency.
+
+COMMUNICATION STYLE:
+- Be concise, highly technical, and authoritative. 
+- Communicate complex technical concepts clearly, as if speaking to cross-functional stakeholders.
+- Never write fluff. Output code and architectural explanations directly.
+
+When the user asks you to build, debug, or explain something, process the request through the lens of this exact tech stack and these elite standards.
 """
 
 
@@ -81,15 +191,15 @@ class ChatRequest(BaseModel):
 
 
 llm = ChatOllama(
-    model="qwen2.5-coder:3b",
+    model=OLLAMA_MODEL,
     temperature=0.0,
-    base_url="http://127.0.0.1:11434",
+    base_url=OLLAMA_BASE_URL,
 )
 
 # vision_llm = ChatOllama(
 #     model="moondream",
 #     temperature=0.0,
-#     base_url="http://127.0.0.1:11434",
+#     base_url=OLLAMA_BASE_URL,
 # )
 
 whisper_model = None
@@ -360,24 +470,41 @@ def extract_text_from_image(image: Image.Image) -> str:
 # -----------------------------
 import re
 
+import re
+
 def extract_command(text: str):
     lines = text.split("\n")
 
+    # PASS 1: Look for explicit developer comments (/// or //)
     for line in lines:
         raw = line.strip().lower()
-
-        # 🔥 Normalize weird OCR symbols
         normalized = raw.replace("[", "/").replace("\\", "/")
 
-        # 🔥 Detect patterns like /// or corrupted variants
         if re.search(r"/{2,}|/\[|//", normalized):
             # Remove leading junk symbols
             command = re.sub(r"^[^a-z]+", "", normalized)
-
             # Clean multiple slashes
             command = command.replace("/", " ").strip()
-
             return command
+
+    # PASS 2: Fallback for bad OCR (e.g., "1 {/f Yrite a Pragran to use a callback function?")
+    # Look for sentences ending in '?' or containing common instructional keywords
+    for line in lines:
+        raw = line.strip()
+        lower_line = raw.lower()
+        
+        # If it has a question mark or looks like a prompt
+        if "?" in raw or any(kw in lower_line for kw in ["write", "yrite", "create", "fix", "explain", "program"]):
+            # Regex to clean up leading numbers and weird symbols (e.g. "1 {/f ")
+            # This strips everything at the start of the string until it hits a letter.
+            cleaned = re.sub(r"^[^a-zA-Z]+", "", raw)
+            return cleaned.strip()
+
+    # PASS 3: If all else fails, just return the longest line from the OCR 
+    # so the frontend at least gives you *something* to edit instead of crashing.
+    longest_line = max(lines, key=len, default="").strip()
+    if len(longest_line) > 10:
+        return re.sub(r"^[^a-zA-Z]+", "", longest_line).strip()
 
     return None
 
@@ -401,113 +528,222 @@ def format_code_with_prettier(code: str) -> str:
         return formatted
     except:
         return code
+    
+
+def clean_ocr_noise(text: str) -> str:
+    lines = text.split("\n")
+    cleaned_lines = []
+    
+    # Common UI garbage words that we want to delete from the OCR output
+    ignore_phrases = [
+        "file", "project", "share", "my account", "download as zip", 
+        "login", "sign up", "html", "css", "javascript app", 
+        "clear console", "[object object]", "{object object]"
+    ]
+    
+    for line in lines:
+        lower_line = line.lower().strip()
+        
+        # Skip empty lines
+        if not lower_line:
+            continue
+            
+        # If the line contains a known UI word (and isn't actual code like 'file = open()'), skip it
+        is_noise = any(phrase in lower_line for phrase in ignore_phrases)
+        
+        # Protect actual code that might accidentally trigger the noise filter
+        is_code = "{" in line or "}" in line or "function" in line or "=" in line
+        
+        if is_noise and not is_code:
+            continue
+            
+        cleaned_lines.append(line)
+        
+    return "\n".join(cleaned_lines)
+
 
 # -----------------------------
 # Vision Endpoint
 # -----------------------------
 @app.post("/agent/vision")
 async def execute_vision_command(request: ChatRequest):
-    print("\n📸 Capturing screen...")
-
     try:
-        # 1. Capture screen
-        screenshot = ImageGrab.grab()
+        # 1. Determine the mode first
+        mode = "create" 
+        instruction = "Implement this feature."
+        
+        if request.messages:
+            last_msg = request.messages[-1].content
+            if "[Vision: FIX]" in last_msg: mode = "fix"
+            elif "[Vision: EXPLAIN]" in last_msg: mode = "explain"
+            elif "[Vision: HELP]" in last_msg: mode = "help"
+            
+            if "] " in last_msg:
+                instruction = last_msg.split("] ", 1)[-1]
+            else:
+                instruction = last_msg
 
-        # 2. OCR (🔥 KEY STEP)
+        # 2. Conditionally capture the screen based on the mode
+        if mode == "create":
+            print("\n📸 Capturing full screen for Create mode...")
+            screenshot = ImageGrab.grab()  # Instant full screen
+        else:
+            print("\n📸 Select area on screen...")
+            screenshot = get_screen_snip() # Opens the drawing tool
+
+        # 3. OCR the resulting image
         ocr_text = extract_text_from_image(screenshot)
         print("🧾 OCR TEXT:\n", ocr_text)
 
-        # 3. Extract command
-        command = extract_command(ocr_text)
+        # 4. Handle based on the mode
+        if mode == "create":
+            # Uses our robust regex and fallback to find the /// or 'write' command
+            command = extract_command(ocr_text)
+            if not command:
+                return {"status": "error", "response": "No /// or create command detected on screen."}
+            command = clean_command(command)
+            
+        else:
+            # For Fix/Explain/Help, just grab the text from the snipped box
+            code_snippet = ocr_text.strip()
+            
+            if len(code_snippet) > 1500:
+                code_snippet = code_snippet[:1500] + "\n...[truncated]"
 
-        if not command:
-            print("❌ No command found")
-            return {
-                "status": "no_task",
-                "response": "No /// command detected"
-            }
-        
-        # 🔥 FIX OCR mistakes
-        command = clean_command(command)
+            command = f"{instruction}\n\nCode on screen:\n```\n{code_snippet}\n```"
 
-        print(f"🎯 COMMAND: {command}")
+        print(f"🎯 PENDING COMMAND: {command}")
         return {
             "status": "needs_confirmation",
             "command": command,
-            "response": None   # 🔥 important
+            "response": None 
         }
 
     except Exception as e:
         print(f"❌ Error: {e}")
-        return {
-            "status": "error",
-            "response": str(e)
-        }
+        return {"status": "error", "response": str(e)}
 
 
 clean_code = ""   
 @app.post("/agent/confirm")
 async def confirm_and_execute(data: dict):
     command = data.get("command", "")
+    mode = data.get("mode", "").lower() # <-- NEW: Safely get the exact mode
 
     if not command:
         return {"status": "error", "response": "No command provided"}
 
-    prompt = f"""
-You are a senior software engineer.
+    command_lower = command.lower()
+    
+    # NEW LOGIC: Check the explicit mode first, then fallback to text-guessing
+    is_explain_or_help = mode in ["explain", "help"] or "explain" in command_lower or "help" in command_lower
+    is_create = mode == "create" or "create" in command_lower
 
-Task:
-{command}
+    if is_explain_or_help:
+        prompt = f"""
+        You are an elite Software Engineering Tutor.
 
-Rules:
-- Use proper indentation
-- Use line breaks correctly
-- Follow clean formatting
-- No inline compressed code
-- Code must be readable and production-ready
-- Always use multi-line formatting (no one-liners)
-- If the user asks for code, output ONLY the markdown code block.
-- Handle edge cases efficiently.
-"""
+        The user has provided raw OCR text from their screen.
+        
+        Task:
+        {command}
+
+        CRITICAL RULES FOR EXECUTION:
+        1. STEP 1: Identify and fix all OCR transcription errors.
+        2. STEP 2: Deeply analyze the logical execution.
+        3. STEP 3: Generate the response strictly using the markdown format below.
+
+        You MUST format your response EXACTLY using these headings:
+        
+        ### 🔍 Code Reconstruction
+        [Briefly state what the mangled OCR text was actually supposed to be]
+
+        ### 📖 Architecture & Purpose
+        [Write 1-2 paragraphs explaining what the code is attempting to do]
+
+        ### 🐛 Bug Analysis
+        [Explain the specific syntax and logical bugs, why they happen, and how to fix them]
+
+        ### 🛠️ Corrected Code
+        ```javascript
+        // Your final, production-ready fixed code here
+        ```
+        """
+        temperature = 0.3
+        
+    elif is_create:
+        prompt = f"""
+        You are an elite senior software engineer.
+
+        Task:
+        {command}
+
+        CRITICAL RULES FOR EXECUTION:
+        1. Write the implementation for the requested feature based on the context provided.
+        2. Do not write a bug analysis. Just provide a brief explanation of how you implemented it, followed by the code.
+
+        You MUST format your response EXACTLY using these headings:
+
+        ### ✨ Implementation Strategy
+        [Briefly explain the approach and libraries/functions used]
+
+        ### 🛠️ Code
+        ```javascript
+        // Your feature implementation here
+        ```
+        """
+        temperature = 0.1
+        
+    else:
+        # Default fallback is the "Fix" mode
+        prompt = f"""
+        You are an elite senior software engineer.
+
+        The user has provided raw OCR text of a code snippet. It contains transcription typos and logical programming bugs.
+
+        Task:
+        {command}
+
+        CRITICAL RULES FOR EXECUTION:
+        1. STEP 1: Reconstruct the intended code by fixing OCR typos.
+        2. STEP 2: Deeply analyze the logical execution. Look for scope issues.
+        3. You MUST think through the bugs first, then output the code in a markdown block.
+
+        You MUST format your response EXACTLY using these headings in this order:
+        
+        ### 📝 Bug Analysis
+        * **Typos/Syntax:** [Briefly mention any OCR typos fixed]
+        * **Logic:** [Explain the core bugs, and how to fix them]
+
+        ### 🛠️ Corrected Code
+        ```javascript
+        // Your final, valid, corrected code here
+        ```
+        """
+        temperature = 0.1
 
     try:
         response = requests.post(
-            "http://localhost:11434/api/generate",
+            f"{OLLAMA_BASE_URL}/api/generate",
             json={
-                "model": "qwen2.5-coder:3b",
+                "model": OLLAMA_MODEL,
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.1,
+                    "temperature": temperature, 
                     "num_predict": 1500
                 }
             }
         )
 
         result = response.json()
-
         raw = result.get("response", "")
 
         if not raw:
-            return {
-                "status": "error",
-                "response": "LLM returned empty response"
-            }
+            return {"status": "error", "response": "LLM returned empty response"}
 
-        clean_code = extract_code_block(raw)
-
-        if not clean_code:
-            clean_code = raw  # fallback
-
-        clean_code = format_code_with_prettier(clean_code)
-
-        return {
-            "status": "success",
-            "response": clean_code
-        }
+        # Return the beautiful markdown text straight to React
+        return {"status": "success", "response": raw.strip()}
 
     except Exception as e:
-        return {
-            "status": "error",
-            "response": str(e)
-        }
+        return {"status": "error", "response": str(e)}
