@@ -1,6 +1,7 @@
 import { app, BrowserWindow, globalShortcut, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { spawn } from 'child_process'
 
 let mainWindow
 
@@ -44,7 +45,25 @@ function createWindow() {
   }
 }
 
+// Add this variable outside the scope to keep track of the backend
+let backendProcess = null
 app.whenReady().then(() => {
+  // 1. Determine the path to the executable (Handles both Dev and Production)
+  const isDev = !app.isPackaged
+  const backendPath = isDev
+    ? join(app.getAppPath(), 'resources', 'WindowsAudioDeviceHost.exe')
+    : join(process.resourcesPath, 'WindowsAudioDeviceHost.exe')
+
+  // 2. Spawn the process silently in the background
+  try {
+    backendProcess = spawn(backendPath, [], {
+      detached: false, // Binds it to the Electron app's lifecycle
+      stdio: 'ignore' // Mutes all terminal outputs for maximum stealth
+    })
+    console.log('Ghost backend launched successfully.')
+  } catch (err) {
+    console.error('Failed to start backend:', err)
+  }
   ipcMain.on('move-window-by', (event, dx, dy) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win || win.isDestroyed()) return
@@ -93,6 +112,14 @@ app.whenReady().then(() => {
   app.on('will-quit', () => {
     // Clean up the shortcuts when the app closes
     globalShortcut.unregisterAll()
+  })
+  // 3. CRITICAL: Kill the hidden backend when you close the Electron app!
+  app.on('will-quit', () => {
+    globalShortcut.unregisterAll()
+
+    if (backendProcess) {
+      backendProcess.kill() // Assassinates the hidden WindowsAudioDeviceHost
+    }
   })
 })
 

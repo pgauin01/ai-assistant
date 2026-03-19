@@ -14,22 +14,52 @@ function App() {
   const mediaRecorderRef = useRef(null)
   const mediaStreamRef = useRef(null)
   const audioChunksRef = useRef([])
+  const stopRecordingTimeoutRef = useRef(null)
+  const micToastTimeoutRef = useRef(null)
+  const isRecordingRef = useRef(false)
+  const isThinkingRef = useRef(false)
   const [showVisionMenu, setShowVisionMenu] = useState(false)
   const recordingStartTimeRef = useRef(null)
   const [pendingCommand, setPendingCommand] = useState(null)
+  const [micToast, setMicToast] = useState('')
+
+  const showMicToast = (message, duration = 1200) => {
+    if (micToastTimeoutRef.current) {
+      clearTimeout(micToastTimeoutRef.current)
+      micToastTimeoutRef.current = null
+    }
+
+    setMicToast(message)
+    micToastTimeoutRef.current = setTimeout(() => {
+      setMicToast('')
+      micToastTimeoutRef.current = null
+    }, duration)
+  }
+
+  useEffect(() => {
+    isRecordingRef.current = isRecording
+  }, [isRecording])
+
+  useEffect(() => {
+    isThinkingRef.current = isThinking
+  }, [isThinking])
 
   useEffect(() => {
     if (window.api && window.api.onFocusInput) {
-      window.api.onFocusInput(() => {
+      const cleanup = window.api.onFocusInput(() => {
         inputRef.current?.focus()
       })
+
+      return () => cleanup?.()
     }
+
+    return undefined
   }, [])
 
   // Listen for the Global Hotkey from Electron
   useEffect(() => {
     if (window.api && window.api.onToggleMic) {
-      window.api.onToggleMic(() => {
+      const cleanup = window.api.onToggleMic(() => {
         // Because we are in a closure, we use a ref to check the current recording state
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
           stopRecording()
@@ -37,7 +67,11 @@ function App() {
           startRecording()
         }
       })
+
+      return () => cleanup?.()
     }
+
+    return undefined
   }, [])
 
   useEffect(() => {
@@ -48,6 +82,14 @@ function App() {
 
   useEffect(() => {
     return () => {
+      if (stopRecordingTimeoutRef.current) {
+        clearTimeout(stopRecordingTimeoutRef.current)
+        stopRecordingTimeoutRef.current = null
+      }
+      if (micToastTimeoutRef.current) {
+        clearTimeout(micToastTimeoutRef.current)
+        micToastTimeoutRef.current = null
+      }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop()
       }
@@ -143,7 +185,8 @@ function App() {
       e.preventDefault()
       e.stopPropagation()
     }
-    if (isThinking || isRecording) return
+    if (isThinkingRef.current || isRecordingRef.current) return
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') return
 
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setMessages((prev) => [
@@ -171,6 +214,7 @@ function App() {
       }
 
       recorder.onstop = async () => {
+        mediaRecorderRef.current = null
         const chunks = audioChunksRef.current
         audioChunksRef.current = []
 
@@ -178,6 +222,7 @@ function App() {
         const recordingDuration = Date.now() - recordingStartTimeRef.current
         if (recordingDuration < 500) {
           console.warn('Recording too short, ignoring.')
+          showMicToast('Recording too short')
           return // Abort if it was just a quick accidental click
         }
 
@@ -188,11 +233,15 @@ function App() {
       }
 
       recorder.start()
+      isRecordingRef.current = true
       setIsRecording(true)
       recordingStartTimeRef.current = Date.now() // Record the exact start time
+      showMicToast('Recording started')
     } catch (error) {
       stopMediaStream()
+      isRecordingRef.current = false
       setIsRecording(false)
+      showMicToast('Microphone permission denied', 1800)
       setMessages((prev) => [
         ...prev,
         { role: 'assistant', content: 'Microphone permission denied.' }
@@ -208,15 +257,19 @@ function App() {
 
     const recorder = mediaRecorderRef.current
     if (!recorder || recorder.state === 'inactive') return
+    if (stopRecordingTimeoutRef.current) return
 
+    isRecordingRef.current = false
     setIsRecording(false)
 
     // THE FIX: Wait 400ms before actually killing the recording
     // to catch the final syllable of your last word!
-    setTimeout(() => {
+    stopRecordingTimeoutRef.current = setTimeout(() => {
       if (recorder.state !== 'inactive') {
         recorder.stop()
       }
+      showMicToast('Recording stopped')
+      stopRecordingTimeoutRef.current = null
     }, 400)
   }
 
@@ -635,6 +688,11 @@ function App() {
         <div className="w-[700px] mt-3 text-right text-xs text-gray-500">
           {isRecording ? 'Release mic to send' : 'Press ESC to dismiss'}
         </div>
+        {micToast && (
+          <div className="w-[700px] mt-2 text-center text-xs text-blue-200 bg-blue-900/40 border border-blue-400/40 rounded-lg px-3 py-2 backdrop-blur-sm">
+            {micToast}
+          </div>
+        )}
       </div>
     </div>
   )

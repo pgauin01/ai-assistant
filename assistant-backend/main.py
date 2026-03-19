@@ -46,7 +46,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_env_file(os.path.join(BASE_DIR, ".env"))
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL" , "qwen2.5-coder:3b")
 
 
 class SnippingTool:
