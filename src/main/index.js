@@ -8,15 +8,13 @@ let mainWindow
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 800,
-    height: 200, // Keep it short, just for the command bar
+    height: 800, // Keep it short, just for the command bar
     show: false, // Don't show until ready
     transparent: true, // Translucent background
     frame: false, // No window controls
     alwaysOnTop: true, // Float above all
     hasShadow: false,
     resizable: false,
-    height: 800,
-    alwaysOnTop: true,
     skipTaskbar: true, // Hides it from the Windows taskbar
     type: 'toolbar',
     webPreferences: {
@@ -57,13 +55,15 @@ app.whenReady().then(() => {
   // 2. Spawn the process silently in the background
   try {
     backendProcess = spawn(backendPath, [], {
-      detached: false, // Binds it to the Electron app's lifecycle
-      stdio: 'ignore' // Mutes all terminal outputs for maximum stealth
+      detached: false,
+      stdio: 'ignore',
+      windowsHide: true // <-- ADD THIS to hide the backend console window from the taskbar
     })
     console.log('Ghost backend launched successfully.')
   } catch (err) {
     console.error('Failed to start backend:', err)
   }
+
   ipcMain.on('move-window-by', (event, dx, dy) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win || win.isDestroyed()) return
