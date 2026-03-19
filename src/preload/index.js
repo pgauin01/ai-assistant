@@ -3,7 +3,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 const api = {
   hideOverlay: () => ipcRenderer.send('hide-overlay'),
   onFocusInput: (callback) => ipcRenderer.on('focus-input', callback),
-  moveWindowBy: (dx, dy) => ipcRenderer.send('move-window-by', dx, dy)
+  moveWindowBy: (dx, dy) => ipcRenderer.send('move-window-by', dx, dy),
+  onToggleMic: (callback) => ipcRenderer.on('toggle-mic', () => callback())
 }
 
 if (process.contextIsolated) {

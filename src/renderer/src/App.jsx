@@ -26,6 +26,20 @@ function App() {
     }
   }, [])
 
+  // Listen for the Global Hotkey from Electron
+  useEffect(() => {
+    if (window.api && window.api.onToggleMic) {
+      window.api.onToggleMic(() => {
+        // Because we are in a closure, we use a ref to check the current recording state
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          stopRecording()
+        } else {
+          startRecording()
+        }
+      })
+    }
+  }, [])
+
   useEffect(() => {
     if (transcriptRef.current) {
       transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight
@@ -125,8 +139,10 @@ function App() {
   }
 
   const startRecording = async (e) => {
-    e.preventDefault()
-    e.stopPropagation()
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
     if (isThinking || isRecording) return
 
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {

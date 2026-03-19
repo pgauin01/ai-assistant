@@ -16,6 +16,8 @@ function createWindow() {
     resizable: false,
     height: 800,
     alwaysOnTop: true,
+    skipTaskbar: true, // Hides it from the Windows taskbar
+    type: 'toolbar',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
@@ -24,6 +26,7 @@ function createWindow() {
 
   // Hides the window from screen capture and screen sharing.
   mainWindow.setContentProtection(true)
+  mainWindow.setIgnoreMouseEvents(true, { forward: true })
   // mainWindow.webContents.openDevTools({ mode: 'detach' })
 
   // Start in "click-through" mode
@@ -78,6 +81,18 @@ app.whenReady().then(() => {
   ipcMain.on('hide-overlay', () => {
     mainWindow.hide()
     mainWindow.setIgnoreMouseEvents(true, { forward: true })
+  })
+
+  // 1. Register the Global Hotkey (Ctrl+Space or Cmd+Space)
+  globalShortcut.register('CommandOrControl+Space', () => {
+    // 2. Send an IPC message to the React frontend
+    if (mainWindow) {
+      mainWindow.webContents.send('toggle-mic')
+    }
+  })
+  app.on('will-quit', () => {
+    // Clean up the shortcuts when the app closes
+    globalShortcut.unregisterAll()
   })
 })
 
