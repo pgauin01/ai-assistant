@@ -236,7 +236,7 @@ function App() {
       isRecordingRef.current = true
       setIsRecording(true)
       recordingStartTimeRef.current = Date.now() // Record the exact start time
-      showMicToast('Recording started')
+      // showMicToast('Recording started')
     } catch (error) {
       stopMediaStream()
       isRecordingRef.current = false
@@ -268,7 +268,7 @@ function App() {
       if (recorder.state !== 'inactive') {
         recorder.stop()
       }
-      showMicToast('Recording stopped')
+      // showMicToast('Recording stopped')
       stopRecordingTimeoutRef.current = null
     }, 400)
   }
