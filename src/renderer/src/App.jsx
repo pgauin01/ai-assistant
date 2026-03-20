@@ -223,8 +223,13 @@ function App() {
         if (recordingDuration < 500) {
           console.warn('Recording too short, ignoring.')
           showMicToast('Recording too short')
-          return // Abort if it was just a quick accidental click
+          stopMediaStream() // <-- FIX: Kill stream if aborted
+          return
         }
+
+        // 🛑 THE STEALTH FIX: Sever the hardware connection immediately
+        // the millisecond the recording stops. This hides the Windows Mic Icon.
+        stopMediaStream()
 
         if (!chunks.length) return
 
