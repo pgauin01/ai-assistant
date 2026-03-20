@@ -1,3 +1,6 @@
+import os
+import faster_whisper
+fw_assets = os.path.join(os.path.dirname(faster_whisper.__file__), 'assets')
 # -*- mode: python ; coding: utf-8 -*-
 
 
@@ -5,7 +8,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[(fw_assets, 'faster_whisper/assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -19,8 +22,10 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.datas,
     [],
-    exclude_binaries=True,
+    exclude_binaries=False,
     name='WindowsAudioDeviceHost',
     debug=False,
     bootloader_ignore_signals=False,
@@ -32,13 +37,4 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-)
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='WindowsAudioDeviceHost',
 )

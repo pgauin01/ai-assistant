@@ -18,6 +18,10 @@ import soundcard as sc
 import soundfile as sf
 import requests
 import re
+from fastapi import Request
+from fastapi.responses import JSONResponse
+import traceback
+import os
 
 
 import tkinter as tk
@@ -45,8 +49,8 @@ def load_env_file(path: str) -> None:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_env_file(os.path.join(BASE_DIR, ".env"))
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL" , "qwen2.5-coder:3b")
+OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_MODEL = "qwen2.5-coder:3b"
 
 
 class SnippingTool:
@@ -161,6 +165,21 @@ When the user asks you to build, debug, or explain something, process the reques
 
 
 app = FastAPI()
+
+# --- NEW: GLOBAL CRASH CATCHER ---
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    # Write the exact error to a text file on your Desktop
+    desktop_path = os.path.join(os.path.expanduser("~"), "Desktop", "vision_crash_log.txt")
+    with open(desktop_path, "w", encoding="utf-8") as f:
+        f.write(f"CRASH OCCURRED ON ROUTE: {request.url.path}\n\n")
+        f.write(traceback.format_exc())
+        
+    print(f"FATAL ERROR CAUGHT: {exc}") # Try to print it too
+    return JSONResponse(
+        status_code=500,
+        content={"message": "Internal Server Error", "detail": str(exc)}
+    )
 
 app.add_middleware(
     CORSMiddleware,
@@ -585,15 +604,15 @@ async def execute_vision_command(request: ChatRequest):
 
         # 2. Conditionally capture the screen based on the mode
         if mode == "create":
-            print("\n📸 Capturing full screen for Create mode...")
+            print("Capturing full screen for Create mode...")
             screenshot = ImageGrab.grab()  # Instant full screen
         else:
-            print("\n📸 Select area on screen...")
+            print("Select area on screen...")
             screenshot = get_screen_snip() # Opens the drawing tool
 
         # 3. OCR the resulting image
         ocr_text = extract_text_from_image(screenshot)
-        print("🧾 OCR TEXT:\n", ocr_text)
+        print("OCR TEXT:\n", ocr_text)
 
         # 4. Handle based on the mode
         if mode == "create":
@@ -612,7 +631,7 @@ async def execute_vision_command(request: ChatRequest):
 
             command = f"{instruction}\n\nCode on screen:\n```\n{code_snippet}\n```"
 
-        print(f"🎯 PENDING COMMAND: {command}")
+        print(f"PENDING COMMAND: {command}")
         return {
             "status": "needs_confirmation",
             "command": command,
@@ -620,7 +639,7 @@ async def execute_vision_command(request: ChatRequest):
         }
 
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         return {"status": "error", "response": str(e)}
 
 
@@ -747,3 +766,12 @@ async def confirm_and_execute(data: dict):
 
     except Exception as e:
         return {"status": "error", "response": str(e)}
+
+# -----------------------------
+# Server Startup (Crucial for .exe)
+# -----------------------------
+if __name__ == "__main__":
+    import uvicorn
+    # Start the server on localhost:8000 so Electron can talk to it
+    print("Starting FastAPI backend on port 8000...")
+    uvicorn.run(app, host="127.0.0.1", port=8000)        

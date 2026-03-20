@@ -1,7 +1,15 @@
 import { app, BrowserWindow, globalShortcut, ipcMain } from 'electron'
+import { existsSync } from 'fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn } from 'child_process'
+
+// --- 🛑 MEMORY & STEALTH OPTIMIZATIONS 🛑 ---
+// Disables the heavy GPU rendering process, saving ~100MB+ of RAM
+app.disableHardwareAcceleration()
+// Prevents fallback software rendering
+app.commandLine.appendSwitch('disable-software-rasterizer')
+// --------------------------------------------
 
 let mainWindow
 
@@ -26,7 +34,7 @@ function createWindow() {
   // Hides the window from screen capture and screen sharing.
   mainWindow.setContentProtection(true)
   mainWindow.setIgnoreMouseEvents(true, { forward: true })
-  // mainWindow.webContents.openDevTools({ mode: 'detach' })
+  mainWindow.webContents.openDevTools({ mode: 'detach' })
 
   // Start in "click-through" mode
   mainWindow.setIgnoreMouseEvents(true, { forward: true })
@@ -45,24 +53,82 @@ function createWindow() {
 
 // Add this variable outside the scope to keep track of the backend
 let backendProcess = null
-app.whenReady().then(() => {
-  // 1. Determine the path to the executable (Handles both Dev and Production)
-  const isDev = !app.isPackaged
-  const backendPath = isDev
-    ? join(app.getAppPath(), 'resources', 'WindowsAudioDeviceHost.exe')
-    : join(process.resourcesPath, 'WindowsAudioDeviceHost.exe')
+const BACKEND_EXE_NAME = 'WindowsAudioDeviceHost.exe'
+
+function resolveBackendPath() {
+  if (app.isPackaged) {
+    return join(process.resourcesPath, BACKEND_EXE_NAME)
+  }
+
+  const devCandidates = [
+    join(app.getAppPath(), 'resources', BACKEND_EXE_NAME),
+    join(process.cwd(), 'resources', BACKEND_EXE_NAME)
+  ]
+
+  return devCandidates.find((candidate) => existsSync(candidate)) ?? devCandidates[0]
+}
+
+function launchBackend() {
+  const backendPath = resolveBackendPath()
+
+  if (!existsSync(backendPath)) {
+    console.error(`[backend] Executable not found: ${backendPath}`)
+    return
+  }
 
   // 2. Spawn the process silently in the background
   try {
     backendProcess = spawn(backendPath, [], {
       detached: false,
-      stdio: 'ignore',
-      windowsHide: true // <-- ADD THIS to hide the backend console window from the taskbar
+      windowsHide: true,
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+      // REMOVED: stdio: 'ignore' - We need to hear it now!
     })
+
+    // Capture standard info logs
+    backendProcess.stdout.on('data', (data) => {
+      const msg = `[PYTHON INFO]: ${data.toString().trim()}`
+      if (mainWindow)
+        mainWindow.webContents
+          .executeJavaScript(`console.log(\`${msg.replace(/`/g, '\\`')}\`)`)
+          .catch(() => {})
+    })
+
+    // Capture crash logs and Python tracebacks (This is the golden ticket)
+    backendProcess.stderr.on('data', (data) => {
+      const msg = `[PYTHON ERROR]: ${data.toString().trim()}`
+      if (mainWindow)
+        mainWindow.webContents
+          .executeJavaScript(`console.error(\`${msg.replace(/`/g, '\\`')}\`)`)
+          .catch(() => {})
+    })
+
+    // Check if it's dying immediately
+    backendProcess.on('close', (code) => {
+      if (mainWindow)
+        mainWindow.webContents
+          .executeJavaScript(`console.warn('[PYTHON STATUS] Backend exited with code: ${code}')`)
+          .catch(() => {})
+    })
+
     console.log('Ghost backend launched successfully.')
   } catch (err) {
     console.error('Failed to start backend:', err)
   }
+
+  backendProcess.on('error', (err) => {
+    console.error(`[backend] Failed to start ${backendPath}:`, err)
+  })
+
+  backendProcess.on('exit', (code, signal) => {
+    console.log(`[backend] exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`)
+  })
+
+  console.log(`[backend] launched: ${backendPath}`)
+}
+
+app.whenReady().then(() => {
+  launchBackend()
 
   ipcMain.on('move-window-by', (event, dx, dy) => {
     const win = BrowserWindow.fromWebContents(event.sender)
@@ -109,22 +175,14 @@ app.whenReady().then(() => {
       mainWindow.webContents.send('toggle-mic')
     }
   })
-  app.on('will-quit', () => {
-    // Clean up the shortcuts when the app closes
-    globalShortcut.unregisterAll()
-  })
-  // 3. CRITICAL: Kill the hidden backend when you close the Electron app!
-  app.on('will-quit', () => {
-    globalShortcut.unregisterAll()
-
-    if (backendProcess) {
-      backendProcess.kill() // Assassinates the hidden WindowsAudioDeviceHost
-    }
-  })
 })
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+
+  if (backendProcess && !backendProcess.killed) {
+    backendProcess.kill()
+  }
 })
 
 app.on('window-all-closed', () => {

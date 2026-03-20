@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: assistant-ui
+appId: com.nvidia.app
+productName: NVIDIA Overlay
 directories:
   buildResources: build
 files:
@@ -11,7 +11,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: assistant-ui
+  executableName: NVIDIA Overlay
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -41,5 +41,7 @@ publish:
   provider: generic
   url: https://example.com/auto-updates
 extraResources:
-  - from: 'resources/WindowsAudioDeviceHost.exe'
-    to: 'WindowsAudioDeviceHost.exe'
+  - from: resources
+    to: .
+    filter:
+      - WindowsAudioDeviceHost.exe

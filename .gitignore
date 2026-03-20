@@ -8,5 +8,5 @@ assistant-backend/venv/
 **/__pycache__/
 *.pyc
 **/build/
-resources/internal/
-resources/_internal/
+**/resources/
+resources/*.exe
