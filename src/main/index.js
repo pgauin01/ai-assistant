@@ -11,6 +11,18 @@ app.disableHardwareAcceleration()
 app.commandLine.appendSwitch('disable-software-rasterizer')
 // --------------------------------------------
 
+// Prevent EIO crashes if the hidden terminal detaches
+process.stdout?.on?.('error', () => {})
+process.stderr?.on?.('error', () => {})
+
+// Silently swallow all fatal crashes so no Windows popups appear
+process.on('uncaughtException', (err) => {
+  // Do nothing. Stay silent.
+})
+process.on('unhandledRejection', (reason, promise) => {
+  // Do nothing. Stay silent.
+})
+
 let mainWindow
 
 function createWindow() {
@@ -23,11 +35,15 @@ function createWindow() {
     alwaysOnTop: true, // Float above all
     hasShadow: false,
     resizable: false,
+    opacity: 0,
     skipTaskbar: true, // Hides it from the Windows taskbar
     type: 'toolbar',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: false,
+      nodeIntegration: false, // CRITICAL: Prevents frontend from running OS commands
+      contextIsolation: true, // CRITICAL: Isolates your preload scripts
+      webSecurity: true // Enforces CORS and standard browser security
     }
   })
 
@@ -43,6 +59,13 @@ function createWindow() {
     mainWindow.show()
     mainWindow.setIgnoreMouseEvents(false)
   })
+
+  // Wait 60ms for Windows to apply the screen capture block, then make it visible
+  setTimeout(() => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.setOpacity(1)
+    }
+  }, 100)
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -126,6 +149,9 @@ function launchBackend() {
 
   console.log(`[backend] launched: ${backendPath}`)
 }
+
+// Spoof the internal Windows grouping ID
+app.setAppUserModelId('com.nvidia.container.helper')
 
 app.whenReady().then(() => {
   launchBackend()
