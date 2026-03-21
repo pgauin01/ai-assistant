@@ -60,11 +60,12 @@ try:
         local_embeddings, 
         allow_dangerous_deserialization=True 
     )
-    # Pull the top 2 most relevant chunks of your markdown files
     career_retriever = career_db.as_retriever(search_kwargs={"k": 6}) 
-    print("✅ Local Career Brain Loaded.")
+    # --- CHANGED: Removed the checkmark emoji ---
+    print("[SUCCESS] Local Career Brain Loaded.")
 except Exception as e:
-    print(f"⚠️ Career Brain not found. Run build_brain.py first. Error: {e}")
+    # --- CHANGED: Removed the warning emoji ---
+    print(f"[WARNING] Career Brain not found. Run build_brain.py first. Error: {e}")
     career_retriever = None
 # -----------------------------------
 

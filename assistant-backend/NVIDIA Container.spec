@@ -9,7 +9,6 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[(fw_assets, 'faster_whisper/assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -17,6 +16,11 @@ a = Analysis(
     excludes=[],
     noarchive=False,
     optimize=0,
+    datas=[
+        (fw_assets, 'faster_whisper/assets'), 
+        ('.env', '.'), 
+        ('career_vector_db', 'career_vector_db')
+    ],
 )
 pyz = PYZ(a.pure)
 

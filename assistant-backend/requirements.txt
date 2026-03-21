@@ -1,0 +1,25 @@
+# --- Core API Server ---
+fastapi
+uvicorn
+python-multipart    # Required for FastAPI to receive audio file uploads
+requests
+
+# --- AI & Vector Database (RAG) ---
+langchain-ollama
+langchain-community
+langchain-text-splitters
+faiss-cpu
+
+# --- Voice & System Audio ---
+faster-whisper
+soundcard
+soundfile
+numpy
+
+# --- Vision & OCR ---
+Pillow              # For screen grabbing
+pytesseract         # For reading text from screenshots
+opencv-python       # For image contrast enhancement (cv2)
+
+# --- Text Processing ---
+textblob            # For spell-checking OCR commands
