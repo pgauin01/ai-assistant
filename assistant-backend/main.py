@@ -61,7 +61,7 @@ try:
         allow_dangerous_deserialization=True 
     )
     # Pull the top 2 most relevant chunks of your markdown files
-    career_retriever = career_db.as_retriever(search_kwargs={"k": 2}) 
+    career_retriever = career_db.as_retriever(search_kwargs={"k": 6}) 
     print("✅ Local Career Brain Loaded.")
 except Exception as e:
     print(f"⚠️ Career Brain not found. Run build_brain.py first. Error: {e}")
@@ -313,16 +313,40 @@ def transcribe_audio_file(temp_audio_path: str) -> str:
 async def execute_command(command: UserCommand):
     formatted_messages = build_message_history(command)
 
-    # --- UPDATED: CAREER RAG INTERCEPTOR ---
-    if "[Quick Command: CAREER]" in command.text and career_retriever:
-        # Extract JUST the user's question, ignoring the hidden command wrappers
-        question = command.text.split("Question:\n\n")[-1].strip() if "Question:\n\n" in command.text else command.text.replace("[Quick Command: CAREER]", "").strip()
+    # --- THE GLOBAL AUTO-ROUTER ---
+    user_text_lower = command.text.lower()
+    
+    # Define trigger words that automatically activate your Career Brain
+    career_triggers = [
+        "experience", "resume", "project", "portfolio", "interview", 
+        "hustle bot", "hustlebot", "shadow os", "kirana", "challenge faced"
+    ]
+    
+    is_career_question = "[Quick Command: CAREER]" in command.text or any(kw in user_text_lower for kw in career_triggers)
+
+    if is_career_question:
+        # 1. LOUD FAILURE: Don't fail silently to the coding prompt!
+        if not career_retriever:
+            return {"status": "success", "response": "⚠️ **SYSTEM ALERT:** My career database is offline. Please run `python build_brain.py` and restart the backend."}
         
-        # Search the FAISS database
+        # 2. Extract JUST the user's question safely
+        if "Question:\n\n" in command.text:
+            question = command.text.split("Question:\n\n")[-1].strip()
+        else:
+            question = command.text.replace("[Quick Command: CAREER]", "").strip()
+        
+        # 3. Search the FAISS database
         docs = career_retriever.invoke(question)
-        context = "\n\n".join([doc.page_content for doc in docs])
         
-        # THE IRONCLAD PROMPT: Strict rules to prevent 3B models from hallucinating
+        context_chunks = []
+        for doc in docs:
+            project_name = doc.metadata.get("Project", "Resume Data")
+            section_name = doc.metadata.get("Section", "")
+            chunk_text = f"PROJECT: {project_name} | SECTION: {section_name}\n{doc.page_content}"
+            context_chunks.append(chunk_text)
+            
+        context = "\n\n".join(context_chunks)
+        
         career_system_prompt = f"""
         You are an elite career agent representing the user.
         Answer the interview question based ONLY on this context about their past projects. 
@@ -336,12 +360,12 @@ async def execute_command(command: UserCommand):
         {context}
         """
         
-        # Overwrite the system prompt
-        formatted_messages[0] = SystemMessage(content=career_system_prompt.strip())
-        
-        # Replace the messy UI message with just the clean question so the LLM doesn't get confused
-        if isinstance(formatted_messages[-1], HumanMessage):
-            formatted_messages[-1] = HumanMessage(content=question)
+        # 4. CRITICAL FIX: Isolate the Context!
+        # Wipe the older chat history so the small LLM doesn't get confused by previous coding tasks.
+        formatted_messages = [
+            SystemMessage(content=career_system_prompt.strip()),
+            HumanMessage(content=question)
+        ]
     # -----------------------------------
 
     if len(formatted_messages) == 1:
