@@ -7,7 +7,8 @@ const SLASH_COMMANDS = [
   { id: 'explain', icon: '📖', label: 'Explain', desc: 'Deep technical explanation' },
   { id: 'fix', icon: '🛠️', label: 'Fix', desc: 'Fix and explain broken code' },
   { id: 'create', icon: '✨', label: 'Create', desc: 'Write a production-ready program' },
-  { id: 'clear', icon: '🗑️', label: 'Clear', desc: 'Clear the chat history' }
+  { id: 'clear', icon: '🗑️', label: 'Clear', desc: 'Clear the chat history' },
+  { id: 'career', icon: '💼', label: 'Career', desc: 'Ask about my projects & experience' }
   // { id: 'system', icon: '🎧', label: 'Wiretap', desc: 'Listen to system audio (5s)' }
 ]
 
@@ -350,6 +351,9 @@ function App() {
       augmentedPrompt = `[Quick Command: FIX]\nPlease analyze this broken code. You MUST provide:\n1. The exact bug and why it is breaking the old code.\n2. The corrected, production-ready code.\n3. A detailed explanation of the differences between the old and new code.\n\nCode to fix:\n\n${baseQuery}`
     } else if (commandId === 'create') {
       augmentedPrompt = `[Quick Command: CREATE]\nPlease write a complete, production-ready program or script for this request. Include necessary imports, setup instructions, robust error handling, and a brief explanation of the architectural strategy used.\n\nCreation Request:\n\n${baseQuery}`
+    } else if (commandId === 'career') {
+      // --- NEW: The Career RAG Prompt ---
+      augmentedPrompt = `[Quick Command: CAREER]\nPlease answer the following interview question based on my local career database.\n\nQuestion:\n\n${baseQuery}`
     }
 
     await sendTextMessage(displayCommand, augmentedPrompt)

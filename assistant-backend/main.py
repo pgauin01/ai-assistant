@@ -27,6 +27,25 @@ import os
 import tkinter as tk
 from PIL import ImageGrab
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+from langchain_community.vectorstores import FAISS
+from langchain_ollama import OllamaEmbeddings
+
+# Load the Career Vector DB on startup
+try:
+    local_embeddings = OllamaEmbeddings(model="nomic-embed-text")
+    career_db = FAISS.load_local(
+        os.path.join(BASE_DIR, "career_vector_db"), 
+        local_embeddings, 
+        allow_dangerous_deserialization=True # Required for local FAISS files
+    )
+    career_retriever = career_db.as_retriever(search_kwargs={"k": 2}) # Pull top 2 chunks
+    print("✅ Local Career Brain Loaded.")
+except Exception as e:
+    print(f"⚠️ Career Brain not found. Run build_brain.py first. Error: {e}")
+    career_retriever = None
+
 
 def load_env_file(path: str) -> None:
     if not os.path.exists(path):
@@ -277,9 +296,42 @@ def transcribe_audio_file(temp_audio_path: str) -> str:
     return " ".join(segment.text.strip() for segment in segments).strip()
 
 
+# @app.post("/agent/execute")
+# async def execute_command(command: UserCommand):
+#     formatted_messages = build_message_history(command)
+
+#     if len(formatted_messages) == 1:
+#         return {"status": "error", "response": "Please send a prompt."}
+
+#     try:
+#         response = llm.invoke(formatted_messages)
+#         return {"status": "success", "response": response.content}
+#     except Exception as error:
+#         return {"status": "error", "response": f"{error}"}
+
 @app.post("/agent/execute")
 async def execute_command(command: UserCommand):
     formatted_messages = build_message_history(command)
+
+    # --- NEW: CAREER RAG INTERCEPTOR ---
+    # If the React frontend sends the secret CAREER tag, rewrite the AI's personality
+    # and feed it the vector database context!
+    if command.text.startswith("[Quick Command: CAREER]") and career_retriever:
+        question = command.text.replace("[Quick Command: CAREER]", "").strip()
+        docs = career_retriever.invoke(question)
+        context = "\n\n".join([doc.page_content for doc in docs])
+        
+        career_system_prompt = f"""
+        You are an elite career agent representing the user.
+        Answer the interview question based ONLY on this context about their past projects. 
+        Communicate highly technically. If the context doesn't mention it, do not invent details.
+
+        EXPERIENCE CONTEXT:
+        {context}
+        """
+        # Overwrite the default Coding prompt with the Career context
+        formatted_messages[0] = SystemMessage(content=career_system_prompt.strip())
+    # -----------------------------------
 
     if len(formatted_messages) == 1:
         return {"status": "error", "response": "Please send a prompt."}
