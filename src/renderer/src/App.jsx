@@ -3,6 +3,14 @@ import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism' // VS Code Dark Theme
 
+const SLASH_COMMANDS = [
+  { id: 'explain', icon: '📖', label: 'Explain', desc: 'Deep technical explanation' },
+  { id: 'fix', icon: '🛠️', label: 'Fix', desc: 'Fix and explain broken code' },
+  { id: 'create', icon: '✨', label: 'Create', desc: 'Write a production-ready program' },
+  { id: 'clear', icon: '🗑️', label: 'Clear', desc: 'Clear the chat history' }
+  // { id: 'system', icon: '🎧', label: 'Wiretap', desc: 'Listen to system audio (5s)' }
+]
+
 function App() {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState([])
@@ -22,6 +30,10 @@ function App() {
   const recordingStartTimeRef = useRef(null)
   const [pendingCommand, setPendingCommand] = useState(null)
   const [micToast, setMicToast] = useState('')
+  const abortControllerRef = useRef(null)
+  const [showSlashMenu, setShowSlashMenu] = useState(false)
+  const [slashFilter, setSlashFilter] = useState('')
+  const [slashIndex, setSlashIndex] = useState(0)
 
   const showMicToast = (message, duration = 1200) => {
     if (micToastTimeoutRef.current) {
@@ -104,8 +116,12 @@ function App() {
     window.api.hideOverlay()
   }
 
-  const sendTextMessage = async (command) => {
-    const userMessage = { role: 'user', content: command }
+  const sendTextMessage = async (displayCommand, augmentedPrompt = null) => {
+    // If we have a hidden augmented prompt, use it for the backend. Otherwise use the normal text.
+    const payloadText = augmentedPrompt || displayCommand
+
+    // 1. Update the UI with the clean, short command (e.g., "/explain closure")
+    const userMessage = { role: 'user', content: displayCommand }
     const nextMessages = [...messages, userMessage]
 
     setMessages(nextMessages)
@@ -113,10 +129,13 @@ function App() {
     setIsThinking(true)
 
     try {
+      // 2. Swap out the last message with the massive augmented prompt for the AI to read
+      const backendMessages = [...messages, { role: 'user', content: payloadText }]
+
       const res = await fetch('http://127.0.0.1:8000/agent/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: command, messages: nextMessages })
+        body: JSON.stringify({ text: payloadText, messages: backendMessages })
       })
       const data = await res.json()
       const assistantReply =
@@ -138,16 +157,29 @@ function App() {
   const sendVoiceMessage = async (audioBlob) => {
     setIsThinking(true)
 
+    // --- NEW: Set up the Kill Switch ---
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    abortControllerRef.current = new AbortController()
+
+    const timeoutId = setTimeout(() => {
+      if (abortControllerRef.current) abortControllerRef.current.abort()
+    }, 10000) // 10 second timeout for the transcription request
+    // -----------------------------------
+
     try {
       const formData = new FormData()
       formData.append('audio', audioBlob, 'recording.webm')
 
       const res = await fetch('http://127.0.0.1:8000/agent/voice', {
         method: 'POST',
-        body: formData
+        body: formData,
+        signal: abortControllerRef.current.signal // <-- Attach the signal
       })
-      const data = await res.json()
+      clearTimeout(timeoutId) // Clear if successful
 
+      const data = await res.json()
       const transcript =
         typeof data?.transcript === 'string' && data.transcript.trim() ? data.transcript.trim() : ''
 
@@ -164,12 +196,22 @@ function App() {
         ])
       }
     } catch (error) {
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'Error: Voice capture failed or backend is unreachable.' }
-      ])
+      clearTimeout(timeoutId)
+      if (error.name === 'AbortError') {
+        showMicToast('Processing timed out.')
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: 'Audio processing timed out.' }
+        ])
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: 'Error: Voice capture failed.' }
+        ])
+      }
     } finally {
       setIsThinking(false)
+      abortControllerRef.current = null
     }
   }
 
@@ -278,8 +320,71 @@ function App() {
     }, 400)
   }
 
+  const executeSlashCommand = async (commandId) => {
+    setShowSlashMenu(false)
+
+    // --- NEW: Handle standalone commands that don't need text prompts ---
+    if (commandId === 'clear') {
+      setMessages([])
+      setInput('')
+      return
+    }
+
+    // if (commandId === 'system') {
+    //   setInput('') // Clear the input box immediately
+    //   await captureSystemAudio() // Fire your existing wiretap function!
+    //   return
+    // }
+    // -------------------------------------------------------------------
+
+    // Strip the "/command" part from the input to get the raw text
+    const baseQuery = input.replace(/\/([a-zA-Z]*)$/, '').trim()
+    if (!baseQuery) return
+
+    let displayCommand = `/${commandId} ${baseQuery}`
+    let augmentedPrompt = null
+
+    if (commandId === 'explain') {
+      augmentedPrompt = `[Quick Command: EXPLAIN]\nPlease explain the following concept deeply and technically. You MUST include Time & Space Complexity, architectural details, and under-the-hood mechanics (like event loop blocking, memory management, threads, etc) if applicable.\n\nTarget to explain: ${baseQuery}`
+    } else if (commandId === 'fix') {
+      augmentedPrompt = `[Quick Command: FIX]\nPlease analyze this broken code. You MUST provide:\n1. The exact bug and why it is breaking the old code.\n2. The corrected, production-ready code.\n3. A detailed explanation of the differences between the old and new code.\n\nCode to fix:\n\n${baseQuery}`
+    } else if (commandId === 'create') {
+      augmentedPrompt = `[Quick Command: CREATE]\nPlease write a complete, production-ready program or script for this request. Include necessary imports, setup instructions, robust error handling, and a brief explanation of the architectural strategy used.\n\nCreation Request:\n\n${baseQuery}`
+    }
+
+    await sendTextMessage(displayCommand, augmentedPrompt)
+  }
+
   const handleKeyDown = async (e) => {
-    if (e.key === 'Enter' && !isThinking && !isRecording) {
+    // --- NEW: Keyboard navigation for the Slash Menu ---
+    if (showSlashMenu) {
+      const filtered = SLASH_COMMANDS.filter((c) => c.id.startsWith(slashFilter))
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSlashIndex((prev) => (prev + 1) % filtered.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSlashIndex((prev) => (prev - 1 + filtered.length) % filtered.length)
+        return
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        if (filtered[slashIndex]) {
+          await executeSlashCommand(filtered[slashIndex].id)
+        }
+        return
+      }
+      if (e.key === 'Escape') {
+        setShowSlashMenu(false)
+        return
+      }
+    }
+
+    // Standard Enter key logic
+    if (e.key === 'Enter' && !isThinking && !isRecording && !showSlashMenu) {
       if (pendingCommand !== null) {
         await confirmVisionCommand()
       } else if (input.trim()) {
@@ -575,16 +680,61 @@ function App() {
               <path d="M12 18v3" />
             </svg>
           </button>
-
+          {/* --- NEW: The Slash Command Dropdown --- */}
+          {showSlashMenu && (
+            <div className="absolute top-full left-4 mt-3 w-72 bg-gray-800/95 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl overflow-hidden flex flex-col font-sans animate-fade-in-up z-50">
+              {SLASH_COMMANDS.filter((c) => c.id.startsWith(slashFilter)).map((cmd, idx) => (
+                <button
+                  key={cmd.id}
+                  onPointerDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    executeSlashCommand(cmd.id)
+                  }}
+                  onMouseEnter={() => setSlashIndex(idx)}
+                  className={`px-4 py-3 text-left transition-colors border-b border-gray-700/50 flex flex-col cursor-pointer ${
+                    slashIndex === idx
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-200 hover:bg-gray-700'
+                  }`}
+                >
+                  <span className="font-bold text-sm flex items-center gap-2">
+                    <span>{cmd.icon}</span> /{cmd.id}
+                  </span>
+                  <span
+                    className={`text-xs mt-1 ${slashIndex === idx ? 'text-blue-200' : 'text-gray-400'}`}
+                  >
+                    {cmd.desc}
+                  </span>
+                </button>
+              ))}
+              {SLASH_COMMANDS.filter((c) => c.id.startsWith(slashFilter)).length === 0 && (
+                <div className="px-4 py-3 text-sm text-gray-400 italic">No commands found...</div>
+              )}
+            </div>
+          )}
+          {/* -------------------------------------- */}
           <input
             ref={inputRef}
             type="text"
             value={pendingCommand !== null ? pendingCommand : input}
             onChange={(e) => {
+              const val = e.target.value
               if (pendingCommand !== null) {
-                setPendingCommand(e.target.value)
+                setPendingCommand(val)
               } else {
-                setInput(e.target.value)
+                setInput(val)
+
+                // --- NEW: Slash Menu Listener ---
+                // Checks if the user is currently typing a slash command at the end
+                const match = val.match(/\/([a-zA-Z]*)$/)
+                if (match) {
+                  setShowSlashMenu(true)
+                  setSlashFilter(match[1].toLowerCase())
+                  setSlashIndex(0) // Reset selection to top
+                } else {
+                  setShowSlashMenu(false)
+                }
               }
             }}
             onKeyDown={handleKeyDown}
@@ -605,7 +755,6 @@ function App() {
                   : 'bg-gray-900/95 text-gray-100 border-gray-700 focus:border-blue-500 placeholder-gray-500'
               }`}
           />
-
           {/* Close Button */}
           <button
             onClick={closeOverlay}
@@ -640,7 +789,7 @@ function App() {
           <div className="absolute right-20 top-1/2 -translate-y-1/2">
             {showVisionMenu && (
               <div className="absolute bottom-full right-0 mb-4 w-32 bg-gray-800/95 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl overflow-hidden flex flex-col font-sans animate-fade-in-up">
-                <button
+                {/* <button
                   onPointerDown={(e) => {
                     e.stopPropagation()
                     handleVisionSelect('explain')
@@ -648,8 +797,8 @@ function App() {
                   className="px-4 py-3 text-sm text-gray-200 hover:bg-blue-600 hover:text-white text-left transition-colors border-b border-gray-700"
                 >
                   📖 Explain
-                </button>
-                <button
+                </button> */}
+                {/* <button
                   onPointerDown={(e) => {
                     e.stopPropagation()
                     handleVisionSelect('fix')
@@ -657,7 +806,7 @@ function App() {
                   className="px-4 py-3 text-sm text-gray-200 hover:bg-green-600 hover:text-white text-left transition-colors border-b border-gray-700"
                 >
                   🛠️ Fix
-                </button>
+                </button> */}
                 {/* <button
                   onPointerDown={(e) => {
                     e.stopPropagation()

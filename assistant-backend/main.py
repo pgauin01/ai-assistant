@@ -254,15 +254,24 @@ def transcribe_audio_file(temp_audio_path: str) -> str:
     if whisper_model is None:
         whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8")
 
+
+    optimized_jargon = (
+    "Developer context: Python, JavaScript, TypeScript, React, Next.js, Node.js, FastAPI, "
+    "HTML, CSS, Tailwind. Stack: MERN, MongoDB, PostgreSQL, SQL, NoSQL, Redis, Prisma, ORM. "
+    "Concepts: functions, async, await, promises, closures, callbacks, hooks, useEffect, useState, Redux. "
+    "Architecture: microservices, serverless, REST API, GraphQL, WebSockets, JSON, JWT, OAuth, endpoints, middleware, routing, caching. "
+    "DevOps: AWS, Azure, GCP, Docker, Kubernetes, CI/CD, GitHub Actions, EC2, S3, Nginx. "
+    "AI/ML: PyTorch, TensorFlow, LangChain, LangGraph, LLM, OpenAI, Hugging Face, Transformers, RAG, vector database, embeddings, fine-tuning, inference, prompt engineering, generative AI, NLP, CUDA, Ollama, Whisper, pandas, numpy. "
+    "Commands: git commit, merge, push, pull, sudo, npm install, pip, grep. "
+    "Terms: algorithmic complexity, distributed systems, state management, latency, scalability, debugging, syntax error, refactoring."
+)   
+
     segments, _ = whisper_model.transcribe(
         temp_audio_path,
         language="en",
         beam_size=5,
         vad_filter=True,
-        initial_prompt=(
-            "Developer terminology: Python, JavaScript, React, Node.js, FastAPI, HTML, CSS, "
-            "script, function, async, await, blockchain, solidity, Web3."
-        ),
+        initial_prompt= optimized_jargon
     )
 
     return " ".join(segment.text.strip() for segment in segments).strip()
