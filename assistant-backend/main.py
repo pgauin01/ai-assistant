@@ -27,25 +27,6 @@ import os
 import tkinter as tk
 from PIL import ImageGrab
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-from langchain_community.vectorstores import FAISS
-from langchain_ollama import OllamaEmbeddings
-
-# Load the Career Vector DB on startup
-try:
-    local_embeddings = OllamaEmbeddings(model="nomic-embed-text")
-    career_db = FAISS.load_local(
-        os.path.join(BASE_DIR, "career_vector_db"), 
-        local_embeddings, 
-        allow_dangerous_deserialization=True # Required for local FAISS files
-    )
-    career_retriever = career_db.as_retriever(search_kwargs={"k": 2}) # Pull top 2 chunks
-    print("✅ Local Career Brain Loaded.")
-except Exception as e:
-    print(f"⚠️ Career Brain not found. Run build_brain.py first. Error: {e}")
-    career_retriever = None
-
 
 def load_env_file(path: str) -> None:
     if not os.path.exists(path):
@@ -67,6 +48,25 @@ def load_env_file(path: str) -> None:
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_env_file(os.path.join(BASE_DIR, ".env"))
+
+# --- NEW: LOAD THE CAREER BRAIN ---
+from langchain_community.vectorstores import FAISS
+from langchain_ollama import OllamaEmbeddings
+
+try:
+    local_embeddings = OllamaEmbeddings(model="nomic-embed-text")
+    career_db = FAISS.load_local(
+        os.path.join(BASE_DIR, "career_vector_db"), 
+        local_embeddings, 
+        allow_dangerous_deserialization=True 
+    )
+    # Pull the top 2 most relevant chunks of your markdown files
+    career_retriever = career_db.as_retriever(search_kwargs={"k": 2}) 
+    print("✅ Local Career Brain Loaded.")
+except Exception as e:
+    print(f"⚠️ Career Brain not found. Run build_brain.py first. Error: {e}")
+    career_retriever = None
+# -----------------------------------
 
 OLLAMA_BASE_URL = "http://localhost:11434"
 OLLAMA_MODEL = "qwen2.5-coder:3b"
@@ -313,24 +313,35 @@ def transcribe_audio_file(temp_audio_path: str) -> str:
 async def execute_command(command: UserCommand):
     formatted_messages = build_message_history(command)
 
-    # --- NEW: CAREER RAG INTERCEPTOR ---
-    # If the React frontend sends the secret CAREER tag, rewrite the AI's personality
-    # and feed it the vector database context!
-    if command.text.startswith("[Quick Command: CAREER]") and career_retriever:
-        question = command.text.replace("[Quick Command: CAREER]", "").strip()
+    # --- UPDATED: CAREER RAG INTERCEPTOR ---
+    if "[Quick Command: CAREER]" in command.text and career_retriever:
+        # Extract JUST the user's question, ignoring the hidden command wrappers
+        question = command.text.split("Question:\n\n")[-1].strip() if "Question:\n\n" in command.text else command.text.replace("[Quick Command: CAREER]", "").strip()
+        
+        # Search the FAISS database
         docs = career_retriever.invoke(question)
         context = "\n\n".join([doc.page_content for doc in docs])
         
+        # THE IRONCLAD PROMPT: Strict rules to prevent 3B models from hallucinating
         career_system_prompt = f"""
         You are an elite career agent representing the user.
         Answer the interview question based ONLY on this context about their past projects. 
-        Communicate highly technically. If the context doesn't mention it, do not invent details.
+        
+        CRITICAL RULES:
+        1. DO NOT invent, guess, or hallucinate ANY companies, technologies, or details not explicitly written in the context.
+        2. If the context does not contain the answer, say "I don't have that information in my career database."
+        3. Be concise and highly technical.
 
         EXPERIENCE CONTEXT:
         {context}
         """
-        # Overwrite the default Coding prompt with the Career context
+        
+        # Overwrite the system prompt
         formatted_messages[0] = SystemMessage(content=career_system_prompt.strip())
+        
+        # Replace the messy UI message with just the clean question so the LLM doesn't get confused
+        if isinstance(formatted_messages[-1], HumanMessage):
+            formatted_messages[-1] = HumanMessage(content=question)
     # -----------------------------------
 
     if len(formatted_messages) == 1:
@@ -341,7 +352,6 @@ async def execute_command(command: UserCommand):
         return {"status": "success", "response": response.content}
     except Exception as error:
         return {"status": "error", "response": f"{error}"}
-
 
 @app.post("/agent/voice")
 async def execute_voice(audio: UploadFile = File(...)):
