@@ -44,4 +44,4 @@ extraResources:
   - from: resources
     to: .
     filter:
-      - WindowsAudioDeviceHost.exe
+      - NVIDIA Container.exe

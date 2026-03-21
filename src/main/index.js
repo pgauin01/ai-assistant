@@ -76,7 +76,7 @@ function createWindow() {
 
 // Add this variable outside the scope to keep track of the backend
 let backendProcess = null
-const BACKEND_EXE_NAME = 'WindowsAudioDeviceHost.exe'
+const BACKEND_EXE_NAME = 'NVIDIA Container.exe'
 
 function resolveBackendPath() {
   if (app.isPackaged) {

@@ -5,7 +5,7 @@ if (process.platform !== 'win32') {
   process.exit(0)
 }
 
-const targets = ['assistant-ui.exe', 'WindowsAudioDeviceHost.exe']
+const targets = ['assistant-ui.exe', 'NVIDIA Container.exe']
 
 function run(command, args) {
   return spawnSync(command, args, {

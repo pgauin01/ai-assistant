@@ -5,10 +5,10 @@ const { spawnSync } = require('child_process')
 const rootDir = path.resolve(__dirname, '..')
 const backendDir = path.join(rootDir, 'assistant-backend')
 const resourcesDir = path.join(rootDir, 'resources')
-const specPath = path.join(backendDir, 'WindowsAudioDeviceHost.spec')
-const legacyOnedirDir = path.join(backendDir, 'dist', 'WindowsAudioDeviceHost')
-const distExePath = path.join(backendDir, 'dist', 'WindowsAudioDeviceHost.exe')
-const resourcesExePath = path.join(resourcesDir, 'WindowsAudioDeviceHost.exe')
+const specPath = path.join(backendDir, 'NVIDIA Container.spec')
+const legacyOnedirDir = path.join(backendDir, 'dist', 'NVIDIA Container')
+const distExePath = path.join(backendDir, 'dist', 'NVIDIA Container.exe')
+const resourcesExePath = path.join(resourcesDir, 'NVIDIA Container.exe')
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
