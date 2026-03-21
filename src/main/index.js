@@ -27,7 +27,7 @@ let mainWindow
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 800,
+    width: 800, // Keep it narrow, just for the command bar
     height: 800, // Keep it short, just for the command bar
     show: false, // Don't show until ready
     transparent: true, // Translucent background

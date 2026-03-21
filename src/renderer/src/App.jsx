@@ -611,7 +611,8 @@ function App() {
             return (
               <div
                 key={`message-${idx}`}
-                className="w-full mb-4 p-5 bg-gray-900/95 text-gray-100 rounded-2xl shadow-2xl backdrop-blur-xl border border-gray-700 cursor-text"
+                // className="w-full mb-4 p-5 bg-gray-900/95 text-gray-100 rounded-2xl shadow-2xl backdrop-blur-xl border border-gray-700 cursor-text"
+                className="w-full mb-4 p-5 bg-gray-900/60 text-gray-100 rounded-2xl shadow-2xl backdrop-blur-xl border border-gray-700 cursor-text"
               >
                 <ReactMarkdown
                   components={{
@@ -686,7 +687,7 @@ function App() {
           </button>
           {/* --- NEW: The Slash Command Dropdown --- */}
           {showSlashMenu && (
-            <div className="absolute top-full left-4 mt-3 w-72 bg-gray-800/95 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl overflow-hidden flex flex-col font-sans animate-fade-in-up z-50">
+            <div className="absolute top-full left-4 mt-3 w-72 bg-gray-800/60 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl overflow-hidden flex flex-col font-sans animate-fade-in-up z-50">
               {SLASH_COMMANDS.filter((c) => c.id.startsWith(slashFilter)).map((cmd, idx) => (
                 <button
                   key={cmd.id}
@@ -756,7 +757,7 @@ function App() {
               ${
                 isThinking || isRecording
                   ? 'bg-gray-800/80 text-gray-400 border-blue-500/50 animate-pulse'
-                  : 'bg-gray-900/95 text-gray-100 border-gray-700 focus:border-blue-500 placeholder-gray-500'
+                  : 'bg-gray-900/60 text-gray-100 border-gray-700 focus:border-blue-500 placeholder-gray-500'
               }`}
           />
           {/* Close Button */}
@@ -792,7 +793,7 @@ function App() {
           </button> */}
           <div className="absolute right-20 top-1/2 -translate-y-1/2">
             {showVisionMenu && (
-              <div className="absolute bottom-full right-0 mb-4 w-32 bg-gray-800/95 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl overflow-hidden flex flex-col font-sans animate-fade-in-up">
+              <div className="absolute bottom-full right-0 mb-4 w-32 bg-gray-800/60 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl overflow-hidden flex flex-col font-sans animate-fade-in-up">
                 {/* <button
                   onPointerDown={(e) => {
                     e.stopPropagation()
