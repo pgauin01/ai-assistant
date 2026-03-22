@@ -40,6 +40,7 @@ function App() {
   const [showSlashMenu, setShowSlashMenu] = useState(false)
   const [slashFilter, setSlashFilter] = useState('')
   const [slashIndex, setSlashIndex] = useState(0)
+  const [visionMode, setVisionMode] = useState('create')
 
   const showMicToast = (message, duration = 1200) => {
     if (micToastTimeoutRef.current) {
@@ -494,6 +495,7 @@ function App() {
 
   const handleVisionSelect = async (mode) => {
     setShowVisionMenu(false) // Hide the menu
+    setVisionMode(mode)
 
     // Assign a strict prompt based on the chosen mode
     let systemPrompt = ''
@@ -580,7 +582,7 @@ function App() {
         // body: JSON.stringify({ command: pendingCommand })
         body: JSON.stringify({
           command: pendingCommand,
-          mode: 'create' // Pass the mode state here!
+          mode: visionMode // Pass the mode state here!
         })
       })
 

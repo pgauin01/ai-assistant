@@ -906,8 +906,14 @@ async def execute_vision_command(request: ChatRequest):
             if len(extracted_text) > 1500:
                 extracted_text = extracted_text[:1500] + "\n...[truncated]"
                 
-            # Make sure we don't accidentally duplicate the instruction if Moondream grabbed it
-            command = f"{instruction}\n\nCode extracted from screen:\n```\n{extracted_text}\n```"
+            # Only keep the user's custom typed text, drop the generic boilerplate!
+            custom_instructions = ""
+            if "Additional user instructions:" in instruction:
+                user_text = instruction.split("Additional user instructions:")[-1].strip()
+                custom_instructions = f"// User Note: {user_text}\n\n"
+                
+            # The UI will now ONLY show the clean code + your custom notes
+            command = f"{custom_instructions}{extracted_text}".strip()
 
         print(f"✅ FINAL COMMAND: {command}")
         
@@ -926,96 +932,74 @@ clean_code = ""
 @app.post("/agent/confirm")
 async def confirm_and_execute(data: dict):
     command = data.get("command", "")
-    mode = data.get("mode", "").lower() # <-- NEW: Safely get the exact mode
+    mode = data.get("mode", "").lower()
 
     if not command:
         return {"status": "error", "response": "No command provided"}
 
-    command_lower = command.lower()
-    
-    # NEW LOGIC: Check the explicit mode first, then fallback to text-guessing
-    is_explain_or_help = mode in ["explain", "help"] or "explain" in command_lower or "help" in command_lower
-    is_create = mode == "create" or "create" in command_lower
-
-    if is_explain_or_help:
+    # --- 1. EXPLAIN MODE ---
+    if mode == "explain":
         prompt = f"""
         You are an elite Software Engineering Tutor.
-
-        The user has provided raw OCR text from their screen.
+        The user wants an explanation of the following code or concept extracted from their screen.
         
         Task:
         {command}
 
-        CRITICAL RULES FOR EXECUTION:
-        1. STEP 1: Identify and fix all OCR transcription errors.
-        2. STEP 2: Deeply analyze the logical execution.
-        3. STEP 3: Generate the response strictly using the markdown format below.
-
-        You MUST format your response EXACTLY using these headings:
+        CRITICAL RULES:
+        1. Deeply analyze the concept or code.
+        2. You MUST format your response EXACTLY using these headings:
         
-        ### ðŸ” Code Reconstruction
-        [Briefly state what the mangled OCR text was actually supposed to be]
+        ### 📖 Overview & Purpose
+        [Write a clear, high-level summary of what this code or concept does]
 
-        ### ðŸ“– Architecture & Purpose
-        [Write 1-2 paragraphs explaining what the code is attempting to do]
+        ### 🧠 Architecture & Deep Dive
+        [Provide a highly technical breakdown. Include under-the-hood mechanics, design patterns, or Time/Space complexity if applicable.]
+        """
+        temperature = 0.3
 
-        ### ðŸ› Bug Analysis
-        [Explain the specific syntax and logical bugs, why they happen, and how to fix them]
+    # --- 2. FIX MODE ---
+    elif mode == "fix":
+        prompt = f"""
+        You are an elite Senior Software Engineer.
+        The user has provided code from their screen that contains bugs.
 
-        ### ðŸ› ï¸ Corrected Code
+        Task:
+        {command}
+
+        CRITICAL RULES:
+        1. Analyze the logic. Look for scope issues, bad math, or incorrect syntax.
+        2. Do NOT invent OCR typos if the code is just logically wrong.
+        3. You MUST format your response EXACTLY using these headings:
+        
+        ### 🐛 Bug Analysis
+        [Explain the specific logical or syntax bugs, why they break the code, and how to fix them]
+
+        ### 🛠️ Corrected Code
         ```javascript
         // Your final, production-ready fixed code here
         ```
         """
-        temperature = 0.3
-        
-    elif is_create:
+        temperature = 0.1
+
+    # --- 3. CREATE MODE ---
+    else:
         prompt = f"""
-        You are an elite senior software engineer.
+        You are an elite Senior Software Engineer.
 
         Task:
         {command}
 
-        CRITICAL RULES FOR EXECUTION:
-        1. Write the implementation for the requested feature based on the context provided.
-        2. Do not write a bug analysis. Just provide a brief explanation of how you implemented it, followed by the code.
+        CRITICAL RULES:
+        1. Write the implementation for the requested feature based on the context.
+        2. You MUST format your response EXACTLY using these headings:
 
-        You MUST format your response EXACTLY using these headings:
-
-        ### âœ¨ Implementation Strategy
+        ### ✨ Implementation Strategy
         [Briefly explain the approach and libraries/functions used]
 
-        ### ðŸ› ï¸ Code
+        ### 🛠️ Code
         ```javascript
         // Your feature implementation here
-        ```
-        """
-        temperature = 0.1
-        
-    else:
-        # Default fallback is the "Fix" mode
-        prompt = f"""
-        You are an elite senior software engineer.
-
-        The user has provided raw OCR text of a code snippet. It contains transcription typos and logical programming bugs.
-
-        Task:
-        {command}
-
-        CRITICAL RULES FOR EXECUTION:
-        1. STEP 1: Reconstruct the intended code by fixing OCR typos.
-        2. STEP 2: Deeply analyze the logical execution. Look for scope issues.
-        3. You MUST think through the bugs first, then output the code in a markdown block.
-
-        You MUST format your response EXACTLY using these headings in this order:
-        
-        ### ðŸ“ Bug Analysis
-        * **Typos/Syntax:** [Briefly mention any OCR typos fixed]
-        * **Logic:** [Explain the core bugs, and how to fix them]
-
-        ### ðŸ› ï¸ Corrected Code
-        ```javascript
-        // Your final, valid, corrected code here
         ```
         """
         temperature = 0.1
