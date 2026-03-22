@@ -26,6 +26,7 @@ import os
 
 import tkinter as tk
 from PIL import ImageGrab
+import moondream as md
 
 
 def load_env_file(path: str) -> None:
@@ -257,11 +258,14 @@ llm = ChatOllama(
     base_url=OLLAMA_BASE_URL,
 )
 
-# vision_llm = ChatOllama(
-#     model="moondream",
-#     temperature=0.0,
-#     base_url=OLLAMA_BASE_URL,
-# )
+vision_llm = ChatOllama(
+    model="moondream",
+    temperature=0.0,
+    base_url=OLLAMA_BASE_URL,
+)
+
+MOONDREAM_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlfaWQiOiI0NGU2Y2Q1NC02YmJkLTRmZTktYjYxZS1hNDIxYTc1ZjAzZTgiLCJvcmdfaWQiOiJKSmtFczdhQWZCMGw5Rmk3SXNyYkZnRGtnaERyWG40VyIsImlhdCI6MTc3NDIxMTM3MSwidmVyIjoxfQ.nz27rLzkMfT8p7RetApkUWkRpCVNWFRYRvZ6hHlVjWs"
+moondream_cloud = md.vl(api_key=MOONDREAM_API_KEY)
 
 whisper_model = None
 
@@ -796,10 +800,69 @@ def clean_ocr_noise(text: str) -> str:
 # -----------------------------
 # Vision Endpoint
 # -----------------------------
+# @app.post("/agent/vision")
+# async def execute_vision_command(request: ChatRequest):
+#     try:
+#         # 1. Determine the mode first
+#         mode = "create" 
+#         instruction = "Implement this feature."
+        
+#         if request.messages:
+#             last_msg = request.messages[-1].content
+#             if "[Vision: FIX]" in last_msg: mode = "fix"
+#             elif "[Vision: EXPLAIN]" in last_msg: mode = "explain"
+#             elif "[Vision: HELP]" in last_msg: mode = "help"
+            
+#             if "] " in last_msg:
+#                 instruction = last_msg.split("] ", 1)[-1]
+#             else:
+#                 instruction = last_msg
+
+#         # 2. Conditionally capture the screen based on the mode
+#         if mode == "create":
+#             print("Capturing full screen for Create mode...")
+#             screenshot = ImageGrab.grab()  # Instant full screen
+#         else:
+#             print("Select area on screen...")
+#             screenshot = get_screen_snip() # Opens the drawing tool
+
+#         # 3. OCR the resulting image
+#         ocr_text = extract_text_from_image(screenshot)
+#         print("OCR TEXT:\n", ocr_text)
+
+#         # 4. Handle based on the mode
+#         if mode == "create":
+#             # Uses our robust regex and fallback to find the /// or 'write' command
+#             command = extract_command(ocr_text)
+#             if not command:
+#                 return {"status": "error", "response": "No /// or create command detected on screen."}
+#             command = clean_command(command)
+            
+#         else:
+#             # For Fix/Explain/Help, just grab the text from the snipped box
+#             code_snippet = ocr_text.strip()
+            
+#             if len(code_snippet) > 1500:
+#                 code_snippet = code_snippet[:1500] + "\n...[truncated]"
+
+#             command = f"{instruction}\n\nCode on screen:\n```\n{code_snippet}\n```"
+
+#         print(f"PENDING COMMAND: {command}")
+#         return {
+#             "status": "needs_confirmation",
+#             "command": command,
+#             "response": None 
+#         }
+
+#     except Exception as e:
+#         print(f"Error: {e}")
+#         return {"status": "error", "response": str(e)}
+
+
 @app.post("/agent/vision")
 async def execute_vision_command(request: ChatRequest):
     try:
-        # 1. Determine the mode first
+        # 1. Determine the mode 
         mode = "create" 
         instruction = "Implement this feature."
         
@@ -814,36 +877,40 @@ async def execute_vision_command(request: ChatRequest):
             else:
                 instruction = last_msg
 
-        # 2. Conditionally capture the screen based on the mode
+        # 2. STEALTH MODE: Instantly grab the primary monitor invisibly
+        print(f"📸 Stealth capturing full screen for {mode.upper()} mode...")
+        screenshot = ImageGrab.grab()
+
+        # 3. Formulate the "Sniper" Prompt
         if mode == "create":
-            print("Capturing full screen for Create mode...")
-            screenshot = ImageGrab.grab()  # Instant full screen
+            prompt_text = "Scan this entire image. Locate the code comment that starts with '///'. Output ONLY the sentence written immediately after the '///'. Do not output any other text."
         else:
-            print("Select area on screen...")
-            screenshot = get_screen_snip() # Opens the drawing tool
+            # For Fix/Explain, we need the command AND the code!
+            prompt_text = "Scan this entire image. Locate the code comment starting with '///'. Extract that comment, and ALSO perfectly extract the block of code immediately below it. Output ONLY the comment and the code."
 
-        # 3. OCR the resulting image
-        ocr_text = extract_text_from_image(screenshot)
-        print("OCR TEXT:\n", ocr_text)
+        # 4. Query the Moondream Cloud API
+        print("☁️ Sending Stealth Image to Moondream Cloud API...")
+        # Notice how clean this is! No Base64 encoding required, just pass the PIL Image directly.
+        result = moondream_cloud.query(screenshot, prompt_text)
+        
+        extracted_text = result.get("answer", "").strip()
+        print(f"RAW MOONDREAM OUTPUT:\n{extracted_text}")
 
-        # 4. Handle based on the mode
+        # 5. Format the final command for the UI
         if mode == "create":
-            # Uses our robust regex and fallback to find the /// or 'write' command
-            command = extract_command(ocr_text)
+            command = extract_command(extracted_text)
             if not command:
-                return {"status": "error", "response": "No /// or create command detected on screen."}
-            command = clean_command(command)
-            
+                command = extracted_text 
         else:
-            # For Fix/Explain/Help, just grab the text from the snipped box
-            code_snippet = ocr_text.strip()
-            
-            if len(code_snippet) > 1500:
-                code_snippet = code_snippet[:1500] + "\n...[truncated]"
+            # Clean it up so it formats beautifully in the UI
+            if len(extracted_text) > 1500:
+                extracted_text = extracted_text[:1500] + "\n...[truncated]"
+                
+            # Make sure we don't accidentally duplicate the instruction if Moondream grabbed it
+            command = f"{instruction}\n\nCode extracted from screen:\n```\n{extracted_text}\n```"
 
-            command = f"{instruction}\n\nCode on screen:\n```\n{code_snippet}\n```"
-
-        print(f"PENDING COMMAND: {command}")
+        print(f"✅ FINAL COMMAND: {command}")
+        
         return {
             "status": "needs_confirmation",
             "command": command,
@@ -851,7 +918,7 @@ async def execute_vision_command(request: ChatRequest):
         }
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"❌ Vision Error: {e}")
         return {"status": "error", "response": str(e)}
 
 

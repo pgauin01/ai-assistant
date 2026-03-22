@@ -834,7 +834,7 @@ function App() {
           <div className="absolute right-20 top-1/2 -translate-y-1/2">
             {showVisionMenu && (
               <div className="absolute bottom-full right-0 mb-4 w-32 bg-gray-800/60 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl overflow-hidden flex flex-col font-sans animate-fade-in-up">
-                {/* <button
+                <button
                   onPointerDown={(e) => {
                     e.stopPropagation()
                     handleVisionSelect('explain')
@@ -842,8 +842,8 @@ function App() {
                   className="px-4 py-3 text-sm text-gray-200 hover:bg-blue-600 hover:text-white text-left transition-colors border-b border-gray-700"
                 >
                   📖 Explain
-                </button> */}
-                {/* <button
+                </button>
+                <button
                   onPointerDown={(e) => {
                     e.stopPropagation()
                     handleVisionSelect('fix')
@@ -851,7 +851,7 @@ function App() {
                   className="px-4 py-3 text-sm text-gray-200 hover:bg-green-600 hover:text-white text-left transition-colors border-b border-gray-700"
                 >
                   🛠️ Fix
-                </button> */}
+                </button>
                 {/* <button
                   onPointerDown={(e) => {
                     e.stopPropagation()
