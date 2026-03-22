@@ -60,7 +60,7 @@ try:
         local_embeddings, 
         allow_dangerous_deserialization=True 
     )
-    career_retriever = career_db.as_retriever(search_kwargs={"k": 6}) 
+    career_retriever = career_db.as_retriever(search_kwargs={"k": 4}) 
     # --- CHANGED: Removed the checkmark emoji ---
     print("[SUCCESS] Local Career Brain Loaded.")
 except Exception as e:
@@ -353,9 +353,15 @@ async def execute_command(command: UserCommand):
         Answer the interview question based ONLY on this context about their past projects. 
         
         CRITICAL RULES:
-        1. DO NOT invent, guess, or hallucinate ANY companies, technologies, or details not explicitly written in the context.
-        2. If the context does not contain the answer, say "I don't have that information in my career database."
-        3. Be concise and highly technical.
+        1. DO NOT invent, guess, or hallucinate ANY technologies, databases, or frameworks. If it is not explicitly written in the context, DO NOT include it.
+        2. ISOLATE PROJECTS: You MUST strictly isolate the context. Do NOT apply a technology or feature from one project to another.
+        3. If the context does not contain the answer, say "I don't have that information in my career database."
+        4. TEMPLATE ENFORCEMENT: If the user asks for a general explanation or says "tell me about [Project]", you MUST format your response using EXACTLY these 5 Markdown headings:
+           ### 1. Overview
+           ### 2. Tech Stack Used
+           ### 3. Workflow and Architecture
+           ### 4. Challenges
+           ### 5. Summary
 
         EXPERIENCE CONTEXT:
         {context}

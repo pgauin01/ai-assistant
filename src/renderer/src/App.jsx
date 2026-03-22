@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism' // VS Code Dark Theme
+import mermaid from 'mermaid'
 
 const SLASH_COMMANDS = [
   { id: 'explain', icon: '📖', label: 'Explain', desc: 'Deep technical explanation' },
@@ -48,6 +49,16 @@ function App() {
       micToastTimeoutRef.current = null
     }, duration)
   }
+
+  // --- NEW: Render Mermaid Diagrams ---
+  useEffect(() => {
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'dark',
+      securityLevel: 'loose'
+    })
+    mermaid.contentLoaded()
+  }, [messages, isThinking])
 
   useEffect(() => {
     isRecordingRef.current = isRecording
@@ -618,6 +629,17 @@ function App() {
                   components={{
                     code({ node, inline, className, children, ...props }) {
                       const match = /language-(\w+)/.exec(className || '')
+
+                      // --- NEW: Intercept Mermaid Blocks ---
+                      if (!inline && match && match[1] === 'mermaid') {
+                        return (
+                          <div className="mermaid flex justify-center bg-gray-800/50 p-4 rounded-xl my-4 border border-gray-700 shadow-inner">
+                            {String(children).replace(/\n$/, '')}
+                          </div>
+                        )
+                      }
+                      // -----------------------------------
+
                       return !inline && match ? (
                         <div className="rounded-xl overflow-hidden my-4 border border-gray-700 shadow-lg w-full">
                           <div className="bg-gray-800 px-4 py-1 text-xs text-gray-400 uppercase font-mono border-b border-gray-700 flex justify-between">
