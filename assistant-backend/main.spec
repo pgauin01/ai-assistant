@@ -1,15 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import copy_metadata
 
-datas = []
-datas += copy_metadata('moondream')
+# 1. Start with your Vector DB folder (so your Career Agent doesn't break!)
+custom_datas = [
+    ('career_vector_db', 'career_vector_db')
+]
 
+# 2. Append the metadata for our finicky libraries
+custom_datas += copy_metadata('moondream')
+custom_datas += copy_metadata('soundcard') # Good to add this now for the wiretap!
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=datas,
+    datas=custom_datas, # <-- Point PyInstaller to our custom array
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -25,7 +30,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='main',
+    name='NVIDIA Container',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -44,5 +49,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='main',
+    name='NVIDIA Container',
 )
