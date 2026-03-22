@@ -9,8 +9,12 @@ const SLASH_COMMANDS = [
   { id: 'fix', icon: '🛠️', label: 'Fix', desc: 'Fix and explain broken code' },
   { id: 'create', icon: '✨', label: 'Create', desc: 'Write a production-ready program' },
   { id: 'clear', icon: '🗑️', label: 'Clear', desc: 'Clear the chat history' },
-  { id: 'career', icon: '💼', label: 'Career', desc: 'Ask about my projects & experience' }
+  { id: 'career', icon: '💼', label: 'Career', desc: 'Ask about my projects & experience' },
   // { id: 'system', icon: '🎧', label: 'Wiretap', desc: 'Listen to system audio (5s)' }
+  // --- NEW: Z-Macro Commands for fast testing ---
+  { id: 'z-hustlebot', icon: '🤖', label: 'HustleBot', desc: 'tell me about hustle bot' },
+  { id: 'z-shadowos', icon: '🧠', label: 'Shadow OS', desc: 'tell me about shadow os' },
+  { id: 'z-kirana', icon: '🛒', label: 'Kirana', desc: 'tell me about kirana store' }
 ]
 
 function App() {
@@ -341,6 +345,20 @@ function App() {
       setInput('')
       return
     }
+
+    if (commandId.startsWith('z-')) {
+      let project = ''
+      if (commandId === 'z-hustlebot') project = 'hustle bot'
+      if (commandId === 'z-shadowos') project = 'shadow os'
+      if (commandId === 'z-kirana') project = 'kirana store'
+
+      const displayCommand = `tell me about ${project}`
+      const augmentedPrompt = `[Quick Command: CAREER]\nPlease answer the following interview question based on my local career database.\n\nQuestion:\n\ntell me about ${project}`
+
+      await sendTextMessage(displayCommand, augmentedPrompt)
+      return
+    }
+    // ----
 
     // if (commandId === 'system') {
     //   setInput('') // Clear the input box immediately

@@ -19,7 +19,7 @@ def build_index():
     print(f"📂 Found {len(files)} markdown files. Reading data...")
 
     # 2. Split the text based on your Markdown headers
-    headers_to_split_on = [("#", "Project"), ("##", "Section"), ("###", "Detail")]
+    headers_to_split_on = [("#", "Project"), ("##", "Section")]
     markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
     
     all_splits = []

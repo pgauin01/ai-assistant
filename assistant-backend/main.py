@@ -1,4 +1,4 @@
-from typing import Literal
+﻿from typing import Literal
 import os
 import tempfile
 import warnings
@@ -47,7 +47,29 @@ def load_env_file(path: str) -> None:
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
 load_env_file(os.path.join(BASE_DIR, ".env"))
+
+
+def resolve_career_data_dir() -> str:
+    candidates = [
+        os.path.join(BASE_DIR, "career_data"),
+        os.path.join(PROJECT_ROOT, "career_data"),
+    ]
+    for path in candidates:
+        if os.path.isdir(path):
+            return path
+    # Keep a deterministic fallback path even if the directory is missing.
+    return candidates[0]
+
+
+CAREER_DATA_DIR = resolve_career_data_dir()
+
+
+def read_career_markdown(filename: str) -> str:
+    path = os.path.join(CAREER_DATA_DIR, filename)
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
 
 # --- NEW: LOAD THE CAREER BRAIN ---
 from langchain_community.vectorstores import FAISS
@@ -60,7 +82,7 @@ try:
         local_embeddings, 
         allow_dangerous_deserialization=True 
     )
-    career_retriever = career_db.as_retriever(search_kwargs={"k": 4}) 
+    career_retriever = career_db.as_retriever(search_kwargs={"k": 5}) 
     # --- CHANGED: Removed the checkmark emoji ---
     print("[SUCCESS] Local Career Brain Loaded.")
 except Exception as e:
@@ -136,7 +158,7 @@ except ImportError:
     WhisperModel = None
 
 
-# --- 🚨 MONKEY PATCH FOR SOUNDCARD BUG 🚨 ---
+# --- ðŸš¨ MONKEY PATCH FOR SOUNDCARD BUG ðŸš¨ ---
 _original_fromstring = getattr(np, "fromstring", None)
 
 def _safe_fromstring(*args, **kwargs):
@@ -310,6 +332,82 @@ def transcribe_audio_file(temp_audio_path: str) -> str:
 #     except Exception as error:
 #         return {"status": "error", "response": f"{error}"}
 
+# @app.post("/agent/execute")
+# async def execute_command(command: UserCommand):
+#     formatted_messages = build_message_history(command)
+
+#     # --- THE GLOBAL AUTO-ROUTER ---
+#     user_text_lower = command.text.lower()
+    
+#     # Define trigger words that automatically activate your Career Brain
+#     career_triggers = [
+#         "experience", "resume", "project", "portfolio", "interview", 
+#         "hustle bot", "hustlebot", "shadow os", "kirana", "challenge faced"
+#     ]
+    
+#     is_career_question = "[Quick Command: CAREER]" in command.text or any(kw in user_text_lower for kw in career_triggers)
+
+#     if is_career_question:
+#         # 1. LOUD FAILURE: Don't fail silently to the coding prompt!
+#         if not career_retriever:
+#             return {"status": "success", "response": "âš ï¸ **SYSTEM ALERT:** My career database is offline. Please run `python build_brain.py` and restart the backend."}
+        
+#         # 2. Extract JUST the user's question safely
+#         if "Question:\n\n" in command.text:
+#             question = command.text.split("Question:\n\n")[-1].strip()
+#         else:
+#             question = command.text.replace("[Quick Command: CAREER]", "").strip()
+        
+#         # 3. Search the FAISS database
+#         docs = career_retriever.invoke(question)
+        
+#         context_chunks = []
+#         for doc in docs:
+#             project_name = doc.metadata.get("Project", "Resume Data")
+#             section_name = doc.metadata.get("Section", "")
+#             chunk_text = f"PROJECT: {project_name} | SECTION: {section_name}\n{doc.page_content}"
+#             context_chunks.append(chunk_text)
+            
+#         context = "\n\n".join(context_chunks)
+        
+#         career_system_prompt = f"""
+#         You are an elite career agent representing the user.
+#         Answer the interview question based ONLY on this context about their past projects. 
+        
+#         CRITICAL RULES:
+#         1. DO NOT invent, guess, or hallucinate ANY technologies, databases, or frameworks. If it is not explicitly written in the context, DO NOT include it.
+#         2. ISOLATE PROJECTS: You MUST strictly isolate the context. Do NOT apply a technology or feature from one project to another.
+#         3. If the context does not contain the answer, say "I don't have that information in my career database."
+#         4. TEMPLATE ENFORCEMENT: If the user asks for a general explanation or says "tell me about [Project]", you MUST format your response using EXACTLY these 5 Markdown headings:
+#            ### 1. Overview
+#            ### 2. Tech Stack Used
+#            ### 3. Workflow and Architecture
+#            ### 4. Challenges & Solutions
+#            ### 5. Summary
+#            *CRITICAL: If the provided context is missing the information for any of these 5 sections, you MUST write exactly: "Data not available in context." Do not guess or invent filler.*
+#         5. EXPLAIN THE SOLUTIONS: Under the "Challenges & Solutions" heading, you MUST explicitly state how the challenge was solved. Include the exact Action taken and the Result achieved based on the context.
+
+#         EXPERIENCE CONTEXT:
+#         {context}
+#         """
+        
+#         # 4. CRITICAL FIX: Isolate the Context!
+#         # Wipe the older chat history so the small LLM doesn't get confused by previous coding tasks.
+#         formatted_messages = [
+#             SystemMessage(content=career_system_prompt.strip()),
+#             HumanMessage(content=question)
+#         ]
+#     # -----------------------------------
+
+#     if len(formatted_messages) == 1:
+#         return {"status": "error", "response": "Please send a prompt."}
+
+#     try:
+#         response = llm.invoke(formatted_messages)
+#         return {"status": "success", "response": response.content}
+#     except Exception as error:
+#         return {"status": "error", "response": f"{error}"}
+
 @app.post("/agent/execute")
 async def execute_command(command: UserCommand):
     formatted_messages = build_message_history(command)
@@ -317,7 +415,6 @@ async def execute_command(command: UserCommand):
     # --- THE GLOBAL AUTO-ROUTER ---
     user_text_lower = command.text.lower()
     
-    # Define trigger words that automatically activate your Career Brain
     career_triggers = [
         "experience", "resume", "project", "portfolio", "interview", 
         "hustle bot", "hustlebot", "shadow os", "kirana", "challenge faced"
@@ -326,49 +423,62 @@ async def execute_command(command: UserCommand):
     is_career_question = "[Quick Command: CAREER]" in command.text or any(kw in user_text_lower for kw in career_triggers)
 
     if is_career_question:
-        # 1. LOUD FAILURE: Don't fail silently to the coding prompt!
-        if not career_retriever:
-            return {"status": "success", "response": "⚠️ **SYSTEM ALERT:** My career database is offline. Please run `python build_brain.py` and restart the backend."}
-        
-        # 2. Extract JUST the user's question safely
         if "Question:\n\n" in command.text:
             question = command.text.split("Question:\n\n")[-1].strip()
         else:
             question = command.text.replace("[Quick Command: CAREER]", "").strip()
-        
-        # 3. Search the FAISS database
-        docs = career_retriever.invoke(question)
-        
-        context_chunks = []
-        for doc in docs:
-            project_name = doc.metadata.get("Project", "Resume Data")
-            section_name = doc.metadata.get("Section", "")
-            chunk_text = f"PROJECT: {project_name} | SECTION: {section_name}\n{doc.page_content}"
-            context_chunks.append(chunk_text)
-            
-        context = "\n\n".join(context_chunks)
-        
+
+        # --- INTENT ROUTER: Bypass FAISS for direct project summaries ---
+        context = ""
+        try:
+            if "shadow os" in user_text_lower:
+                context = read_career_markdown("shadow_os.md")
+            elif "hustle bot" in user_text_lower or "hustlebot" in user_text_lower:
+                context = read_career_markdown("hustlebot_master.md")
+            elif "kirana" in user_text_lower:
+                context = read_career_markdown("1k_kirana_store.md")
+            else:
+                # Fallback to FAISS for general questions ("How did you handle rate limits?")
+                if not career_retriever:
+                    return {"status": "success", "response": "âš ï¸ **SYSTEM ALERT:** My career database is offline."}
+
+                docs = career_retriever.invoke(question)
+                context_chunks = []
+                for doc in docs:
+                    project_name = doc.metadata.get("Project", "Resume Data")
+                    chunk_text = f"PROJECT: {project_name}\n{doc.page_content}"
+                    context_chunks.append(chunk_text)
+                context = "\n\n".join(context_chunks)
+        except FileNotFoundError as file_error:
+            missing_file = os.path.basename(getattr(file_error, "filename", "") or "career file")
+            return {
+                "status": "error",
+                "response": (
+                    f"Missing career data file: {missing_file}. "
+                    f"Looked in: {CAREER_DATA_DIR}"
+                ),
+            }
+        # ----------------------------------------------------------------
         career_system_prompt = f"""
         You are an elite career agent representing the user.
         Answer the interview question based ONLY on this context about their past projects. 
         
         CRITICAL RULES:
-        1. DO NOT invent, guess, or hallucinate ANY technologies, databases, or frameworks. If it is not explicitly written in the context, DO NOT include it.
-        2. ISOLATE PROJECTS: You MUST strictly isolate the context. Do NOT apply a technology or feature from one project to another.
-        3. If the context does not contain the answer, say "I don't have that information in my career database."
-        4. TEMPLATE ENFORCEMENT: If the user asks for a general explanation or says "tell me about [Project]", you MUST format your response using EXACTLY these 5 Markdown headings:
+        1. DO NOT invent, guess, or hallucinate ANY technologies, databases, or frameworks. 
+        2. ISOLATE PROJECTS: Do NOT apply a technology or feature from one project to another.
+        3. TEMPLATE ENFORCEMENT: If the user says "tell me about [Project]", you MUST format your response using EXACTLY these 5 Markdown headings:
            ### 1. Overview
            ### 2. Tech Stack Used
            ### 3. Workflow and Architecture
-           ### 4. Challenges
+           ### 4. Challenges & Solutions
            ### 5. Summary
+        4. EXPLAIN THE SOLUTIONS: Under the "Challenges & Solutions" heading, you MUST list EVERY challenge mentioned in the context. For each challenge, explicitly state the Situation, Action, and Result. DO NOT skip this section. DO NOT summarize the challenges in the Summary section.
 
         EXPERIENCE CONTEXT:
         {context}
         """
         
-        # 4. CRITICAL FIX: Isolate the Context!
-        # Wipe the older chat history so the small LLM doesn't get confused by previous coding tasks.
+        # Isolate context to prevent confusing the small LLM
         formatted_messages = [
             SystemMessage(content=career_system_prompt.strip()),
             HumanMessage(content=question)
@@ -427,12 +537,12 @@ async def listen_to_system_audio():
     temp_audio_path = None
 
     try:
-        print("\n🔊 Available Speakers:")
+        print("\nðŸ”Š Available Speakers:")
         speakers = sc.all_speakers()
         for sp in speakers:
             print(f"{sp.name} | id={sp.id}")
 
-        # 🔥 Smart device selection (Headphones > FxSound > Default)
+        # ðŸ”¥ Smart device selection (Headphones > FxSound > Default)
         selected_speaker = None
 
         for sp in speakers:
@@ -450,21 +560,21 @@ async def listen_to_system_audio():
         if not selected_speaker:
             selected_speaker = sc.default_speaker()
 
-        print(f"\n🎯 Using speaker: {selected_speaker.name}")
+        print(f"\nðŸŽ¯ Using speaker: {selected_speaker.name}")
 
         loopback_mic = sc.get_microphone(selected_speaker.id, include_loopback=True)
 
         record_seconds = 5
         sample_rate = 48000
 
-        print(f"🎧 Recording {record_seconds}s of system audio...")
+        print(f"ðŸŽ§ Recording {record_seconds}s of system audio...")
 
         with loopback_mic.recorder(samplerate=sample_rate, blocksize=4096) as mic:
             audio_data = mic.record(numframes=int(sample_rate * record_seconds))
 
-        # 🔊 Validate signal
+        # ðŸ”Š Validate signal
         max_amp = float(np.max(np.abs(audio_data)))
-        print(f"🔊 Max amplitude: {max_amp}")
+        print(f"ðŸ”Š Max amplitude: {max_amp}")
 
         if max_amp < 1e-5:
             return {
@@ -472,18 +582,18 @@ async def listen_to_system_audio():
                 "transcript": "No system audio detected."
             }
 
-        # 🔄 Convert to mono
+        # ðŸ”„ Convert to mono
         if len(audio_data.shape) > 1:
             audio_data = audio_data.mean(axis=1)
 
-        # 💾 Save temp audio
+        # ðŸ’¾ Save temp audio
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
             temp_audio_path = temp_file.name
             sf.write(temp_audio_path, audio_data, sample_rate)
 
-        print("🧠 Transcribing audio...")
+        print("ðŸ§  Transcribing audio...")
 
-        # 🔥 Improved transcription
+        # ðŸ”¥ Improved transcription
         global whisper_model
         if whisper_model is None:
             if WhisperModel is None:
@@ -499,7 +609,7 @@ async def listen_to_system_audio():
             initial_prompt="This is a recording of system audio, possibly containing human speech.",
         )
 
-        print("🧠 Raw segments:")
+        print("ðŸ§  Raw segments:")
         texts = []
         for seg in segments:
             print(seg.text)
@@ -508,14 +618,14 @@ async def listen_to_system_audio():
 
         transcript = " ".join(texts).strip()
 
-        # ✅ DO NOT treat as error anymore
+        # âœ… DO NOT treat as error anymore
         if not transcript:
             return {
                 "status": "success",
                 "transcript": "[Audio detected but no clear speech recognized]"
             }
 
-        print(f"🗣️ Transcript: {transcript}")
+        print(f"ðŸ—£ï¸ Transcript: {transcript}")
 
         return {
             "status": "success",
@@ -523,7 +633,7 @@ async def listen_to_system_audio():
         }
 
     except Exception as e:
-        print(f"❌ System Audio Error: {e}")
+        print(f"âŒ System Audio Error: {e}")
         return {
             "status": "error",
             "transcript": str(e)
@@ -572,7 +682,7 @@ def extract_text_from_image(image: Image.Image) -> str:
     # Convert to grayscale
     image = image.convert("L")
 
-    # 🔥 Increase contrast (huge improvement)
+    # ðŸ”¥ Increase contrast (huge improvement)
     import cv2
     import numpy as np
 
@@ -776,16 +886,16 @@ async def confirm_and_execute(data: dict):
 
         You MUST format your response EXACTLY using these headings:
         
-        ### 🔍 Code Reconstruction
+        ### ðŸ” Code Reconstruction
         [Briefly state what the mangled OCR text was actually supposed to be]
 
-        ### 📖 Architecture & Purpose
+        ### ðŸ“– Architecture & Purpose
         [Write 1-2 paragraphs explaining what the code is attempting to do]
 
-        ### 🐛 Bug Analysis
+        ### ðŸ› Bug Analysis
         [Explain the specific syntax and logical bugs, why they happen, and how to fix them]
 
-        ### 🛠️ Corrected Code
+        ### ðŸ› ï¸ Corrected Code
         ```javascript
         // Your final, production-ready fixed code here
         ```
@@ -805,10 +915,10 @@ async def confirm_and_execute(data: dict):
 
         You MUST format your response EXACTLY using these headings:
 
-        ### ✨ Implementation Strategy
+        ### âœ¨ Implementation Strategy
         [Briefly explain the approach and libraries/functions used]
 
-        ### 🛠️ Code
+        ### ðŸ› ï¸ Code
         ```javascript
         // Your feature implementation here
         ```
@@ -832,11 +942,11 @@ async def confirm_and_execute(data: dict):
 
         You MUST format your response EXACTLY using these headings in this order:
         
-        ### 📝 Bug Analysis
+        ### ðŸ“ Bug Analysis
         * **Typos/Syntax:** [Briefly mention any OCR typos fixed]
         * **Logic:** [Explain the core bugs, and how to fix them]
 
-        ### 🛠️ Corrected Code
+        ### ðŸ› ï¸ Corrected Code
         ```javascript
         // Your final, valid, corrected code here
         ```
@@ -877,3 +987,4 @@ if __name__ == "__main__":
     # Start the server on localhost:8000 so Electron can talk to it
     print("Starting FastAPI backend on port 8000...")
     uvicorn.run(app, host="127.0.0.1", port=8000)        
+
