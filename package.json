@@ -1,7 +1,7 @@
 {
-  "name": "assistant-ui",
-  "version": "1.0.0",
-  "description": "An Electron application with React",
+  "name": "nvidia-overlay",
+  "version": "1.4.8",
+  "description": "A Nvidia GPU overlay",
   "main": "./out/main/index.js",
   "author": "Nvidia Corporation",
   "homepage": "https://electron-vite.org",

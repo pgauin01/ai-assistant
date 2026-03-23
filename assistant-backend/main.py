@@ -435,7 +435,8 @@ async def execute_command(command: UserCommand):
     
     career_triggers = [
         "experience", "resume", "project", "portfolio", "interview", 
-        "hustle bot", "hustlebot", "shadow os", "kirana", "challenge faced"
+        "hustle bot", "hustlebot", "shadow os", "kirana", "challenge faced",
+        "ragchatbot", "college project"
     ]
     
     is_career_question = "[Quick Command: CAREER]" in command.text or any(kw in user_text_lower for kw in career_triggers)
@@ -455,10 +456,17 @@ async def execute_command(command: UserCommand):
                 context = read_career_markdown("hustlebot_master.md")
             elif "kirana" in user_text_lower:
                 context = read_career_markdown("1k_kirana_store.md")
+            elif "ragchatbot" in user_text_lower or "college" in user_text_lower:
+                context = read_career_markdown("RAG_Chatbot.md")
+
+            if context:
+                print("⚡ MACRO TRIGGERED: Bypassing LLM and returning raw document directly.")
+                return {"status": "success", "response": context}
+                
             else:
                 # Fallback to FAISS for general questions ("How did you handle rate limits?")
                 if not career_retriever:
-                    return {"status": "success", "response": "âš ï¸ **SYSTEM ALERT:** My career database is offline."}
+                    return {"status": "success", "response": "**SYSTEM ALERT:** My career database is offline."}
 
                 docs = career_retriever.invoke(question)
                 context_chunks = []
@@ -482,15 +490,18 @@ async def execute_command(command: UserCommand):
         Answer the interview question based ONLY on this context about their past projects. 
         
         CRITICAL RULES:
-        1. DO NOT invent, guess, or hallucinate ANY technologies, databases, or frameworks. 
-        2. ISOLATE PROJECTS: Do NOT apply a technology or feature from one project to another.
-        3. TEMPLATE ENFORCEMENT: If the user says "tell me about [Project]", you MUST format your response using EXACTLY these 5 Markdown headings:
+        1. ABSOLUTE FACTUALITY: You are strictly forbidden from inventing, guessing, or hallucinating ANY details, features, target audiences, or trade-offs. 
+        2. DO NOT EXTRAPOLATE: If the user asks about a detail or trade-off that is not explicitly written in the text below, you MUST reply: "That information is not in the career database."
+        3. ISOLATE PROJECTS: Do NOT apply a technology or feature from one project to another.
+        4. TEMPLATE ENFORCEMENT: If the user says "tell me about [Project]", you MUST format your response using EXACTLY these 6 Markdown headings:
            ### 1. Overview
            ### 2. Tech Stack Used
            ### 3. Workflow and Architecture
            ### 4. Challenges & Solutions
            ### 5. Summary
-        4. EXPLAIN THE SOLUTIONS: Under the "Challenges & Solutions" heading, you MUST list EVERY challenge mentioned in the context. For each challenge, explicitly state the Situation, Action, and Result. DO NOT skip this section. DO NOT summarize the challenges in the Summary section.
+           ### 6. Engineering Trade-offs & Q&A
+        5. EXPLAIN THE SOLUTIONS: Under "Challenges & Solutions", list EVERY challenge mentioned. Explicitly state the Situation, Action, and Result.
+        6. TRADE-OFFS: You must copy the exact Q&A and trade-offs provided in the context. DO NOT invent your own trade-offs.
 
         EXPERIENCE CONTEXT:
         {context}
@@ -555,7 +566,7 @@ async def listen_to_system_audio():
     temp_audio_path = None
 
     try:
-        print("\nðŸ”Š Available Speakers:")
+        print("Available Speakers:")
         speakers = sc.all_speakers()
         for sp in speakers:
             print(f"{sp.name} | id={sp.id}")
@@ -578,21 +589,21 @@ async def listen_to_system_audio():
         if not selected_speaker:
             selected_speaker = sc.default_speaker()
 
-        print(f"\nðŸŽ¯ Using speaker: {selected_speaker.name}")
+        print(f"Using speaker: {selected_speaker.name}")
 
         loopback_mic = sc.get_microphone(selected_speaker.id, include_loopback=True)
 
-        record_seconds = 5
+        record_seconds = 10
         sample_rate = 48000
 
-        print(f"ðŸŽ§ Recording {record_seconds}s of system audio...")
+        print(f"Recording {record_seconds}s of system audio...")
 
         with loopback_mic.recorder(samplerate=sample_rate, blocksize=4096) as mic:
             audio_data = mic.record(numframes=int(sample_rate * record_seconds))
 
         # ðŸ”Š Validate signal
         max_amp = float(np.max(np.abs(audio_data)))
-        print(f"ðŸ”Š Max amplitude: {max_amp}")
+        print(f" Max amplitude: {max_amp}")
 
         if max_amp < 1e-5:
             return {
@@ -609,7 +620,7 @@ async def listen_to_system_audio():
             temp_audio_path = temp_file.name
             sf.write(temp_audio_path, audio_data, sample_rate)
 
-        print("ðŸ§  Transcribing audio...")
+        print(" Transcribing audio...")
 
         # ðŸ”¥ Improved transcription
         global whisper_model
@@ -622,12 +633,12 @@ async def listen_to_system_audio():
             temp_audio_path,
             language="en",
             beam_size=5,
-            vad_filter=True,
+            vad_filter=False,
             vad_parameters=dict(min_silence_duration_ms=500),
             initial_prompt="This is a recording of system audio, possibly containing human speech.",
         )
 
-        print("ðŸ§  Raw segments:")
+        print(" Raw segments:")
         texts = []
         for seg in segments:
             print(seg.text)
@@ -643,7 +654,7 @@ async def listen_to_system_audio():
                 "transcript": "[Audio detected but no clear speech recognized]"
             }
 
-        print(f"ðŸ—£ï¸ Transcript: {transcript}")
+        print(f"Transcript: {transcript}")
 
         return {
             "status": "success",
@@ -651,7 +662,7 @@ async def listen_to_system_audio():
         }
 
     except Exception as e:
-        print(f"âŒ System Audio Error: {e}")
+        print(f"System Audio Error: {e}")
         return {
             "status": "error",
             "transcript": str(e)
