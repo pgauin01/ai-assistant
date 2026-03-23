@@ -28,6 +28,10 @@ import tkinter as tk
 from PIL import ImageGrab
 import moondream as md
 import sys
+import threading
+
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # <--- ADD THIS FIX
 
 
 def load_env_file(path: str) -> None:
@@ -223,6 +227,22 @@ When the user asks you to build, debug, or explain something, process the reques
 
 app = FastAPI()
 
+@app.on_event("startup")
+def warmup_ai_models():
+    def load_whisper():
+        global whisper_model
+        if WhisperModel is not None and whisper_model is None:
+            print("[WARMUP] Pre-loading Whisper 'base.en' model to CPU in background...")
+            try:
+                # IMPORTANT: Keep the cpu_threads=4 fix here too!
+                whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=4)
+                print("[WARMUP] Whisper model is ready for instant voice commands!")
+            except Exception as e:
+                print(f"[WARMUP FAIL] Could not load Whisper: {e}")
+
+    # Fire and forget: Runs the heavy loading on a separate thread
+    threading.Thread(target=load_whisper, daemon=True).start()
+
 # --- NEW: GLOBAL CRASH CATCHER ---
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -307,12 +327,17 @@ def build_message_history(command: UserCommand):
 
 def transcribe_audio_file(temp_audio_path: str) -> str:
     global whisper_model
+    print("[DEBUG] Inside transcribe_audio_file")
 
     if WhisperModel is None:
         raise RuntimeError("faster-whisper is not installed.")
 
     if whisper_model is None:
-        whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8")
+        print("[DEBUG] Loading Whisper 'base.en' model to CPU. This may take 15-30 seconds...")
+        whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=4)
+        print("[DEBUG] Whisper model successfully loaded to RAM!")
+
+    print("[DEBUG] Running inference on audio file...")
 
 
     optimized_jargon = (
@@ -523,8 +548,37 @@ async def execute_command(command: UserCommand):
     except Exception as error:
         return {"status": "error", "response": f"{error}"}
 
+# @app.post("/agent/voice")
+# async def execute_voice(audio: UploadFile = File(...)):
+#     suffix = ".webm"
+
+#     if audio.filename and "." in audio.filename:
+#         suffix = "." + audio.filename.rsplit(".", 1)[-1]
+
+#     temp_audio_path = None
+
+#     try:
+#         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+#             temp_audio_path = temp_file.name
+#             temp_file.write(await audio.read())
+
+#         transcript = transcribe_audio_file(temp_audio_path)
+
+#         if not transcript:
+#             return {"status": "error", "response": "Could not transcribe audio."}
+
+#         return {"status": "success", "transcript": transcript}
+
+#     except Exception as error:
+#         return {"status": "error", "response": f"{error}"}
+
+#     finally:
+#         if temp_audio_path and os.path.exists(temp_audio_path):
+#             os.remove(temp_audio_path)
+
 @app.post("/agent/voice")
 async def execute_voice(audio: UploadFile = File(...)):
+    print(f"[DEBUG] Received voice payload. Filename: {audio.filename}")
     suffix = ".webm"
 
     if audio.filename and "." in audio.filename:
@@ -536,20 +590,28 @@ async def execute_voice(audio: UploadFile = File(...)):
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
             temp_audio_path = temp_file.name
             temp_file.write(await audio.read())
+            
+        # Check if the file is empty!
+        file_size = os.path.getsize(temp_audio_path)
+        print(f"[DEBUG] Saved temp file: {temp_audio_path} (Size: {file_size} bytes)")
+        
+        if file_size < 100:
+            print("[DEBUG] WARNING: Audio file is suspiciously small or empty!")
 
+        print("[DEBUG] Sending to transcribe_audio_file()...")
         transcript = transcribe_audio_file(temp_audio_path)
+        print(f"[DEBUG] Transcription Complete: {transcript}")
 
         if not transcript:
             return {"status": "error", "response": "Could not transcribe audio."}
 
         return {"status": "success", "transcript": transcript}
-
     except Exception as error:
-        return {"status": "error", "response": f"{error}"}
+         return {"status": "error", "response": f"{error}"}
 
     finally:
-        if temp_audio_path and os.path.exists(temp_audio_path):
-            os.remove(temp_audio_path)
+         if temp_audio_path and os.path.exists(temp_audio_path):
+             os.remove(temp_audio_path)
 
 
 @app.post("/agent/listen-system")

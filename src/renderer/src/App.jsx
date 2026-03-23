@@ -204,7 +204,7 @@ function App() {
 
     const timeoutId = setTimeout(() => {
       if (abortControllerRef.current) abortControllerRef.current.abort()
-    }, 10000) // 10 second timeout for the transcription request
+    }, 6000) // 10 second timeout for the transcription request
     // -----------------------------------
 
     try {
