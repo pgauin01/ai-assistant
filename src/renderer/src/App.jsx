@@ -18,6 +18,27 @@ const SLASH_COMMANDS = [
   { id: 'z-rag', icon: '🎓', label: 'RAG Chatbot', desc: 'tell me about my RAG project' }
 ]
 
+const BACKEND_BASE_URL = 'http://127.0.0.1:8000'
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const fetchBackend = async (path, options = {}, retries = 4, retryDelayMs = 250) => {
+  let lastError
+  const url = `${BACKEND_BASE_URL}${path}`
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await fetch(url, options)
+    } catch (error) {
+      lastError = error
+      if (attempt === retries) break
+      await delay(retryDelayMs)
+    }
+  }
+
+  throw lastError
+}
+
 function App() {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState([])
@@ -150,7 +171,7 @@ function App() {
       // 2. Swap out the last message with the massive augmented prompt for the AI to read
       const backendMessages = [...messages, { role: 'user', content: payloadText }]
 
-      const res = await fetch('http://127.0.0.1:8000/agent/execute', {
+      const res = await fetchBackend('/agent/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: payloadText, messages: backendMessages })
@@ -414,13 +435,24 @@ function App() {
         return
       }
       if (e.key === 'Escape') {
+        setPendingCommand(null)
+        setInput('')
         setShowSlashMenu(false)
         return
       }
     }
 
     // Standard Enter key logic
+    // Locate this section in handleKeyDown (around line 419)
     if (e.key === 'Enter' && !isThinking && !isRecording && !showSlashMenu) {
+      // ADD THIS FIX: Check if the user is trying to clear the app even during a vision edit
+      if (pendingCommand === '/clear' || input.trim() === '/clear') {
+        setPendingCommand(null) // Kill the vision state
+        setMessages([]) // Clear the messages
+        setInput('') // Reset input
+        return
+      }
+
       if (pendingCommand !== null) {
         await confirmVisionCommand()
       } else if (input.trim()) {
@@ -472,7 +504,7 @@ function App() {
     setInput('Listening to system audio (10s)...')
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/agent/listen-system', {
+      const res = await fetchBackend('/agent/listen-system', {
         method: 'POST'
       })
       const data = await res.json()
@@ -538,7 +570,7 @@ function App() {
     setMessages(newMessages)
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/agent/vision', {
+      const res = await fetchBackend('/agent/vision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: newMessages })
@@ -578,7 +610,7 @@ function App() {
     setMessages((prev) => [...prev, { role: 'user', content: `✅ ${pendingCommand}` }])
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/agent/confirm', {
+      const res = await fetchBackend('/agent/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // body: JSON.stringify({ command: pendingCommand })

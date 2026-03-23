@@ -456,11 +456,11 @@ async def execute_command(command: UserCommand):
                 context = read_career_markdown("hustlebot_master.md")
             elif "kirana" in user_text_lower:
                 context = read_career_markdown("1k_kirana_store.md")
-            elif "ragchatbot" in user_text_lower or "college" in user_text_lower:
+            elif any(kw in user_text_lower for kw in ["rag", "ragchatbot", "college"]):
                 context = read_career_markdown("RAG_Chatbot.md")
 
             if context:
-                print("⚡ MACRO TRIGGERED: Bypassing LLM and returning raw document directly.")
+                print("MACRO TRIGGERED: Bypassing LLM and returning raw document directly.")
                 return {"status": "success", "response": context}
                 
             else:

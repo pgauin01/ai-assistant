@@ -1,8 +1,9 @@
 import { app, BrowserWindow, globalShortcut, ipcMain } from 'electron'
 import { existsSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn } from 'child_process'
+import net from 'net'
 
 // --- 🛑 MEMORY & STEALTH OPTIMIZATIONS 🛑 ---
 // Disables the heavy GPU rendering process, saving ~100MB+ of RAM
@@ -77,6 +78,34 @@ function createWindow() {
 // Add this variable outside the scope to keep track of the backend
 let backendProcess = null
 const BACKEND_EXE_NAME = 'NVIDIA Container.exe'
+const BACKEND_HOST = '127.0.0.1'
+const BACKEND_PORT = 8000
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+  process.exit(0)
+}
+
+function isPortInUse(port, host = BACKEND_HOST, timeoutMs = 600) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket()
+    let settled = false
+
+    const finish = (inUse) => {
+      if (settled) return
+      settled = true
+      socket.destroy()
+      resolve(inUse)
+    }
+
+    socket.setTimeout(timeoutMs)
+    socket.once('connect', () => finish(true))
+    socket.once('timeout', () => finish(false))
+    socket.once('error', () => finish(false))
+    socket.connect(port, host)
+  })
+}
 
 function resolveBackendPath() {
   if (app.isPackaged) {
@@ -90,7 +119,7 @@ function resolveBackendPath() {
 
   return devCandidates.find((candidate) => existsSync(candidate)) ?? devCandidates[0]
 }
-function launchBackend() {
+async function launchBackend() {
   const backendPath = resolveBackendPath()
 
   if (!existsSync(backendPath)) {
@@ -98,11 +127,14 @@ function launchBackend() {
     return
   }
 
+  if (await isPortInUse(BACKEND_PORT, BACKEND_HOST)) {
+    console.warn(`[backend] Port ${BACKEND_PORT} already in use. Skipping backend launch.`)
+    return
+  }
+
   // 2. Spawn the process silently in the background
   // 2. Spawn the process silently in the background
   try {
-    const { dirname } = require('path') // Make sure you have path imported!
-
     backendProcess = spawn(backendPath, [], {
       cwd: dirname(backendPath), // CRITICAL: Sets working directory so it finds the FAISS DB!
       detached: false,
@@ -139,7 +171,10 @@ function launchBackend() {
     console.log('Ghost backend launched successfully.')
   } catch (err) {
     console.error('Failed to start backend:', err)
+    return
   }
+
+  if (!backendProcess) return
 
   backendProcess.on('error', (err) => {
     console.error(`[backend] Failed to start ${backendPath}:`, err)
@@ -156,7 +191,16 @@ function launchBackend() {
 app.setAppUserModelId('com.nvidia.container.helper')
 
 app.whenReady().then(() => {
-  launchBackend()
+  launchBackend().catch((err) => {
+    console.error('[backend] launch error:', err)
+  })
+
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (!mainWindow.isVisible()) mainWindow.show()
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+  })
 
   ipcMain.on('move-window-by', (event, dx, dy) => {
     const win = BrowserWindow.fromWebContents(event.sender)
