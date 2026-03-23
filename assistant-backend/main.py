@@ -892,7 +892,7 @@ async def execute_vision_command(request: ChatRequest):
                 instruction = last_msg
 
         # 2. STEALTH MODE: Instantly grab the primary monitor invisibly
-        print(f"📸 Stealth capturing full screen for {mode.upper()} mode...")
+        print(f"Stealth capturing full screen for {mode.upper()} mode...")
         screenshot = ImageGrab.grab()
 
         # 3. Formulate the "Sniper" Prompt
@@ -903,7 +903,7 @@ async def execute_vision_command(request: ChatRequest):
             prompt_text = "Scan this entire image. Locate the code comment starting with '///'. Extract that comment, and ALSO perfectly extract the block of code immediately below it. Output ONLY the comment and the code."
 
         # 4. Query the Moondream Cloud API
-        print("☁️ Sending Stealth Image to Moondream Cloud API...")
+        print("Sending Stealth Image to Moondream Cloud API...")
         # Notice how clean this is! No Base64 encoding required, just pass the PIL Image directly.
         result = moondream_cloud.query(screenshot, prompt_text)
         
@@ -929,7 +929,7 @@ async def execute_vision_command(request: ChatRequest):
             # The UI will now ONLY show the clean code + your custom notes
             command = f"{custom_instructions}{extracted_text}".strip()
 
-        print(f"✅ FINAL COMMAND: {command}")
+        print(f"FINAL COMMAND: {command}")
         
         return {
             "status": "needs_confirmation",
@@ -938,7 +938,7 @@ async def execute_vision_command(request: ChatRequest):
         }
 
     except Exception as e:
-        print(f"❌ Vision Error: {e}")
+        print(f"Vision Error: {e}")
         return {"status": "error", "response": str(e)}
 
 
@@ -1051,5 +1051,5 @@ if __name__ == "__main__":
     import uvicorn
     # Start the server on localhost:8000 so Electron can talk to it
     print("Starting FastAPI backend on port 8000...")
-    uvicorn.run(app, host="127.0.0.1", port=8000)        
+    uvicorn.run(app, host="127.0.0.1", port=8000, use_colors=False)        
 
