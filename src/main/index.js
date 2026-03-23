@@ -90,7 +90,6 @@ function resolveBackendPath() {
 
   return devCandidates.find((candidate) => existsSync(candidate)) ?? devCandidates[0]
 }
-
 function launchBackend() {
   const backendPath = resolveBackendPath()
 
@@ -100,12 +99,15 @@ function launchBackend() {
   }
 
   // 2. Spawn the process silently in the background
+  // 2. Spawn the process silently in the background
   try {
+    const { dirname } = require('path') // Make sure you have path imported!
+
     backendProcess = spawn(backendPath, [], {
+      cwd: dirname(backendPath), // CRITICAL: Sets working directory so it finds the FAISS DB!
       detached: false,
       windowsHide: true,
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
-      // REMOVED: stdio: 'ignore' - We need to hear it now!
     })
 
     // Capture standard info logs

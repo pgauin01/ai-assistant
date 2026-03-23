@@ -27,6 +27,7 @@ import os
 import tkinter as tk
 from PIL import ImageGrab
 import moondream as md
+import sys
 
 
 def load_env_file(path: str) -> None:
@@ -46,10 +47,23 @@ def load_env_file(path: str) -> None:
             if key and key not in os.environ:
                 os.environ[key] = value
 
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
+
+# Update your BASE_DIR to use the new function!
+BASE_DIR = resource_path("") 
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 load_env_file(os.path.join(BASE_DIR, ".env"))
+# BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# PROJECT_ROOT = os.path.dirname(BASE_DIR)
+# load_env_file(os.path.join(BASE_DIR, ".env"))
 
 
 def resolve_career_data_dir() -> str:
