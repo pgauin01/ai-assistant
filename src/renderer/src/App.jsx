@@ -198,8 +198,9 @@ function App() {
 
       ws.onopen = () => {
         setIsLiveTranscribing(true)
-        setInput('')
-        setInputText('')
+
+        // --- THE FIX: Inject a fresh message into the chat UI to hold the stream ---
+        setMessages((prev) => [...prev, { role: 'user', content: '🎧 **[Live System Audio]:** ' }])
 
         // Tell the Rust backend to start capturing OS audio!
         window.api.startLiveSystemCapture()
@@ -208,9 +209,17 @@ function App() {
       ws.onmessage = (e) => {
         const data = JSON.parse(e.data)
         if (data.text) {
-          // Append the new text to whatever is already in the input box!
-          setInput((prev) => (prev + ' ' + data.text).trim())
-          setInputText((prev) => (prev + ' ' + data.text).trim())
+          // --- THE FIX: Stream the text directly into the last message bubble ---
+          setMessages((prev) => {
+            const newMessages = [...prev]
+            const lastIndex = newMessages.length - 1
+
+            // Append the new words to the existing transcript bubble
+            if (lastIndex >= 0) {
+              newMessages[lastIndex].content += ' ' + data.text
+            }
+            return newMessages
+          })
         }
       }
 

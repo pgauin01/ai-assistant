@@ -181,7 +181,7 @@ ipcMain.on('start-live-system-capture', (event) => {
       if (mainWindow) {
         mainWindow.webContents.send('live-system-audio-chunk', wav.toBuffer())
       }
-    }, 2000) // 2000ms = 2 second chunks
+    }, 4000) // 2000ms = 2 second chunks
   } catch (e) {
     console.error('Live Capture Error:', e)
   }
