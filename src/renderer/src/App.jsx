@@ -41,9 +41,11 @@ const fetchBackend = async (path, options = {}, retries = 4, retryDelayMs = 250)
 
 function App() {
   const [input, setInput] = useState('')
+  const [inputText, setInputText] = useState('')
   const [messages, setMessages] = useState([])
   const [isThinking, setIsThinking] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
+  const [isListening, setIsListening] = useState(false)
   const inputRef = useRef(null)
   const dragStateRef = useRef(null)
   const transcriptRef = useRef(null)
@@ -94,6 +96,10 @@ function App() {
   useEffect(() => {
     isThinkingRef.current = isThinking
   }, [isThinking])
+
+  useEffect(() => {
+    setInputText(input)
+  }, [input])
 
   useEffect(() => {
     if (window.api && window.api.onFocusInput) {
@@ -409,19 +415,8 @@ function App() {
     // -------------------------------------------------------------------
 
     if (commandId === 'system') {
-      console.log('Starting Wiretap...')
-
-      // 1. Trigger Rust (UI will wait here for 10 seconds)
-      const result = await window.api.wiretapSystem()
-
-      if (result.status === 'success') {
-        // 2. Send the resulting WAV file to your Python Whisper backend!
-        console.log('WAV File ready at:', result.filePath)
-
-        // Example:
-        // const transcript = await sendToPythonWhisper(result.filePath);
-        // addMessageToChat(transcript);
-      }
+      await captureAndTranscribe()
+      return
     }
 
     // Strip the "/command" part from the input to get the raw text
@@ -557,6 +552,37 @@ function App() {
       setInput('Error capturing system audio.')
     } finally {
       setIsThinking(false)
+    }
+  }
+
+  const captureAndTranscribe = async () => {
+    setIsListening(true)
+    try {
+      const result = await window.api.wiretapSystem()
+
+      if (result?.status !== 'success') {
+        console.error('wiretapSystem failed:', result)
+        return
+      }
+
+      const res = await fetch('http://127.0.0.1:8000/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audio_path: result.filePath })
+      })
+
+      if (!res.ok) {
+        throw new Error(`Transcription request failed with status ${res.status}`)
+      }
+
+      const data = await res.json()
+      setInputText(data.text || '')
+      setInput(data.text || '')
+      console.log('Transcribed text:', data.text)
+    } catch (error) {
+      console.error('captureAndTranscribe error:', error)
+    } finally {
+      setIsListening(false)
     }
   }
 
@@ -840,12 +866,13 @@ function App() {
           <input
             ref={inputRef}
             type="text"
-            value={pendingCommand !== null ? pendingCommand : input}
+            value={pendingCommand !== null ? pendingCommand : inputText}
             onChange={(e) => {
               const val = e.target.value
               if (pendingCommand !== null) {
                 setPendingCommand(val)
               } else {
+                setInputText(val)
                 setInput(val)
 
                 // --- NEW: Slash Menu Listener ---
@@ -861,11 +888,13 @@ function App() {
               }
             }}
             onKeyDown={handleKeyDown}
-            disabled={isThinking || isRecording}
+            disabled={isThinking || isRecording || isListening}
             // STOP the drag if you click inside the input box
             onPointerDown={(e) => e.stopPropagation()}
             placeholder={
-              isRecording
+              isListening
+                ? 'Listening to system audio...'
+                : isRecording
                 ? 'Recording... release to send'
                 : isThinking
                   ? 'Thinking...'
@@ -873,7 +902,7 @@ function App() {
             }
             className={`w-full p-4 pl-14 pr-20 text-xl rounded-2xl shadow-2xl backdrop-blur-md outline-none border transition-all font-sans cursor-text
               ${
-                isThinking || isRecording
+                isThinking || isRecording || isListening
                   ? 'bg-gray-800/80 text-gray-400 border-blue-500/50 animate-pulse'
                   : 'bg-gray-900/60 text-gray-100 border-gray-700 focus:border-blue-500 placeholder-gray-500'
               }`}
@@ -961,6 +990,11 @@ function App() {
             </button>
           </div>
         </div>
+        {isListening && (
+          <div className="w-[700px] mt-2 text-center text-xs text-cyan-200 bg-cyan-900/40 border border-cyan-400/40 rounded-lg px-3 py-2 backdrop-blur-sm animate-pulse">
+            🎧 Listening to system audio...
+          </div>
+        )}
 
         <div className="w-[700px] mt-3 text-right text-xs text-gray-500">
           {isRecording ? 'Release mic to send' : 'Press ESC to dismiss'}

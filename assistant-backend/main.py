@@ -5,10 +5,13 @@ import warnings
 import base64
 from io import BytesIO
 
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-import whisper
+try:
+    import whisper
+except ImportError:
+    whisper = None
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
@@ -286,7 +289,13 @@ MOONDREAM_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlfaWQiOiI0NGU2Y2
 moondream_cloud = md.vl(api_key=MOONDREAM_API_KEY)
 
 whisper_model = None
-openai_whisper_model = whisper.load_model("base")
+openai_whisper_model = None
+if whisper is not None:
+    try:
+        openai_whisper_model = whisper.load_model("base")
+        print("[WARMUP] openai-whisper 'base' model loaded.")
+    except Exception as e:
+        print(f"[WARNING] openai-whisper model load failed: {e}")
 
 
 def build_message_history(command: UserCommand):
@@ -421,8 +430,33 @@ async def execute_command(command: UserCommand):
 
 @app.post("/transcribe")
 async def transcribe(request: TranscribeRequest):
-    result = openai_whisper_model.transcribe(request.audio_path)
-    return {"text": result.get("text", "").strip()}
+    global openai_whisper_model
+    global whisper_model
+
+    audio_path = request.audio_path
+
+    if whisper is not None:
+        if openai_whisper_model is None:
+            openai_whisper_model = whisper.load_model("base")
+        result = openai_whisper_model.transcribe(audio_path)
+        return {"text": result.get("text", "").strip()}
+
+    if WhisperModel is not None:
+        if whisper_model is None:
+            whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=4)
+        segments, _ = whisper_model.transcribe(
+            audio_path,
+            language="en",
+            beam_size=5,
+            vad_filter=True,
+        )
+        text = " ".join(segment.text.strip() for segment in segments).strip()
+        return {"text": text}
+
+    raise HTTPException(
+        status_code=500,
+        detail="No transcription backend available. Install 'openai-whisper' or 'faster-whisper'.",
+    )
 
 @app.post("/agent/voice")
 async def execute_voice(audio: UploadFile = File(...)):

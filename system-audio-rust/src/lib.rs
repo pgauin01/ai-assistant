@@ -26,9 +26,16 @@ impl AudioCapturer {
         // 1. Create a threadsafe function to call JS from the audio thread
         let tsfn: ThreadsafeFunction<Vec<u8>, ErrorStrategy::Fatal> = callback
             .create_threadsafe_function(0, |ctx| {
-                ctx.env
-                    .create_buffer_with_data(ctx.value)
-                    .map(|b| vec![b.into_raw()])
+                // --- THE FIX ---
+                // Create the buffer and convert it to a generic JsUnknown type
+                let buffer = ctx.env.create_buffer_with_data(ctx.value)?.into_unknown();
+                
+                // Create null and convert it to a generic JsUnknown type
+                let null = ctx.env.get_null()?.into_unknown();
+                
+                // Now both are JsUnknown, so Rust is happy to put them in the same array!
+                Ok(vec![null, buffer])
+                // ---------------
             })?;
 
         // 2. Initialize OS Audio Host (WASAPI on Windows)
