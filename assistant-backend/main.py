@@ -989,7 +989,6 @@ async def live_transcribe(websocket: WebSocket):
             return
         whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=4)
 
-    # --- THE FIX: Track the last thing Whisper said ---
     last_text = ""
 
     try:
@@ -1001,34 +1000,42 @@ async def live_transcribe(websocket: WebSocket):
                 temp_path = temp_file.name
                 
             try:
-                # 1. Aggressively crop dead air out of the 4-second chunk
+                # 1. Force greedy decoding (temperature=0.0) to stop wild hallucinations
                 segments, _ = whisper_model.transcribe(
                     temp_path,
                     language="en",
                     beam_size=5,
                     vad_filter=True,
-                    # This slices off any silence longer than 300ms BEFORE Whisper sees it!
-                    vad_parameters=dict(min_silence_duration_ms=300, speech_pad_ms=100),
-                    condition_on_previous_text=False
+                    vad_parameters=dict(min_silence_duration_ms=400, speech_pad_ms=100),
+                    condition_on_previous_text=False,
+                    temperature=0.0 
                 )
                 
-                texts = [seg.text.strip() for seg in segments if seg.text and seg.text.strip()]
+                texts = []
+                for seg in segments:
+                    # --- THE KILL SWITCH ---
+                    # Whisper scores every segment on how likely it is to be silence/noise.
+                    # If it's over 60% likely to be noise, we instantly throw the text in the trash!
+                    if getattr(seg, 'no_speech_prob', 0.0) < 0.6:
+                        texts.append(seg.text.strip())
+                        
                 raw_text = " ".join(texts).strip()
                 
-                # 2. Text Deduplicator: Squash back-to-back duplicate sentences
-                # Whisper loops usually look like: "I am here. I am here. I am here."
-                phrases = [p.strip() for p in re.split(r'(?<=[.!?]) +', raw_text) if p.strip()]
-                deduped = []
-                for p in phrases:
-                    if not deduped or deduped[-1].lower() != p.lower():
-                        deduped.append(p)
+                # --- THE ULTIMATE STUTTER CURE ---
+                import re
+                # Split text into logical sentences based on punctuation
+                sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', raw_text) if s.strip()]
                 
-                clean_text = " ".join(deduped).strip()
-                
-                # 3. Only send if it contains text AND isn't the exact same as the last chunk
-                if clean_text and clean_text != last_text:
-                    last_text = clean_text 
-                    await websocket.send_json({"text": clean_text})
+                mid = len(sentences) // 2
+                if mid > 0 and sentences[:mid] == sentences[mid:]:
+                    # If it perfectly looped (A B C A B C), squash it down to just (A B C)
+                    raw_text = " ".join(sentences[:mid])
+                # ---------------------------------
+
+                # 3. Only send if it actually contains clean text AND isn't a stale duplicate
+                if raw_text and raw_text != last_text and len(raw_text) > 2:
+                    last_text = raw_text 
+                    await websocket.send_json({"text": raw_text})
                     
             except Exception as e:
                 print(f"Live WS Transcribe Error: {e}")

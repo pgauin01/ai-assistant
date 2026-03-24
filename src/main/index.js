@@ -119,19 +119,25 @@ ipcMain.handle('wiretap-system', async () => {
         // 1. Combine all chunks into one giant Buffer
         const fullBuffer = Buffer.concat(pcmChunks)
 
-        // 2. Convert raw bytes back to Float32Array
-        const floatArray = new Float32Array(
+        // 2. Convert raw bytes back to Stereo Float32Array
+        const stereoArray = new Float32Array(
           fullBuffer.buffer,
           fullBuffer.byteOffset,
           fullBuffer.length / 4
         )
 
-        // 3. Create a WAV file from the Float32 PCM data
-        const wav = new WaveFile()
-        // Mono (1 channel), Sample Rate, 32-bit Float, Audio Data
-        wav.fromScratch(1, sampleRate, '32f', floatArray)
+        // 3. --- THE FIX: Downmix Stereo to Mono ---
+        // Average the Left and Right channels so it plays at normal speed!
+        const monoArray = new Float32Array(stereoArray.length / 2)
+        for (let i = 0; i < monoArray.length; i++) {
+          monoArray[i] = (stereoArray[i * 2] + stereoArray[i * 2 + 1]) / 2.0
+        }
 
-        // 4. Save to a temporary file
+        // 4. Create a WAV file from the Mono Float32 PCM data
+        const wav = new WaveFile()
+        wav.fromScratch(1, sampleRate, '32f', monoArray)
+
+        // 5. Save to a temporary file
         const tempPath = join(app.getPath('temp'), `wiretap_${Date.now()}.wav`)
         fs.writeFileSync(tempPath, wav.toBuffer())
 
@@ -167,21 +173,30 @@ ipcMain.on('start-live-system-capture', (event) => {
       if (pcmChunks.length === 0) return
 
       const fullBuffer = Buffer.concat(pcmChunks)
-      pcmChunks = [] // Reset for the next 2-second block
+      pcmChunks = [] // Reset for the next 4-second block
 
-      const floatArray = new Float32Array(
+      // 1. Read the raw bytes as a Stereo Float32Array
+      const stereoArray = new Float32Array(
         fullBuffer.buffer,
         fullBuffer.byteOffset,
         fullBuffer.length / 4
       )
 
-      const wav = new WaveFile()
-      wav.fromScratch(1, sampleRate, '32f', floatArray)
+      // 2. --- THE FIX: Downmix Stereo to Mono ---
+      // We average the Left and Right channels so it plays at normal speed!
+      const monoArray = new Float32Array(stereoArray.length / 2)
+      for (let i = 0; i < monoArray.length; i++) {
+        monoArray[i] = (stereoArray[i * 2] + stereoArray[i * 2 + 1]) / 2.0
+      }
 
-      if (mainWindow) {
+      // 3. Create the Mono WAV file
+      const wav = new WaveFile()
+      wav.fromScratch(1, sampleRate, '32f', monoArray)
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('live-system-audio-chunk', wav.toBuffer())
       }
-    }, 4000) // 2000ms = 2 second chunks
+    }, 4000)
   } catch (e) {
     console.error('Live Capture Error:', e)
   }
