@@ -401,12 +401,28 @@ function App() {
     }
     // ----
 
-    if (commandId === 'system') {
-      setInput('') // Clear the input box immediately
-      await captureSystemAudio() // Fire your existing wiretap function!
-      return
-    }
+    // if (commandId === 'system') {
+    //   setInput('') // Clear the input box immediately
+    //   await captureSystemAudio() // Fire your existing wiretap function!
+    //   return
+    // }
     // -------------------------------------------------------------------
+
+    if (commandId === 'system') {
+      console.log('Starting Wiretap...')
+
+      // 1. Trigger Rust (UI will wait here for 10 seconds)
+      const result = await window.api.wiretapSystem()
+
+      if (result.status === 'success') {
+        // 2. Send the resulting WAV file to your Python Whisper backend!
+        console.log('WAV File ready at:', result.filePath)
+
+        // Example:
+        // const transcript = await sendToPythonWhisper(result.filePath);
+        // addMessageToChat(transcript);
+      }
+    }
 
     // Strip the "/command" part from the input to get the raw text
     const baseQuery = input.replace(/\/([a-zA-Z]*)$/, '').trim()

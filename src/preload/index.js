@@ -12,7 +12,8 @@ const api = {
     const listener = () => callback()
     ipcRenderer.on('toggle-mic', listener)
     return () => ipcRenderer.removeListener('toggle-mic', listener)
-  }
+  },
+  wiretapSystem: () => ipcRenderer.invoke('wiretap-system')
 }
 
 if (process.contextIsolated) {

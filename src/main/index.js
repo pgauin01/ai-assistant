@@ -4,6 +4,9 @@ import { dirname, join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn } from 'child_process'
 import net from 'net'
+import { WaveFile } from 'wavefile'
+import fs from 'fs'
+const { AudioCapturer } = require('../../system-audio-rust')
 
 // --- 🛑 MEMORY & STEALTH OPTIMIZATIONS 🛑 ---
 // Disables the heavy GPU rendering process, saving ~100MB+ of RAM
@@ -86,6 +89,62 @@ if (!gotSingleInstanceLock) {
   app.quit()
   process.exit(0)
 }
+
+// ==========================================
+// 10-SECOND WIRETAP MACRO
+// ==========================================
+ipcMain.handle('wiretap-system', async () => {
+  return new Promise((resolve, reject) => {
+    console.log('[Rust Wiretap] Starting 10-second capture...')
+    const capturer = new AudioCapturer()
+    const pcmChunks = []
+
+    let sampleRate = 48000
+
+    try {
+      sampleRate = capturer.startCapture((err, buffer) => {
+        if (err) {
+          console.error('Rust Capture Error:', err)
+          return
+        }
+        // Collect all the raw Float32 chunks
+        pcmChunks.push(buffer)
+      })
+
+      // Wait exactly 10 seconds, then process
+      setTimeout(() => {
+        capturer.stopCapture()
+        console.log('[Rust Wiretap] 10 seconds complete. Processing...')
+
+        // 1. Combine all chunks into one giant Buffer
+        const fullBuffer = Buffer.concat(pcmChunks)
+
+        // 2. Convert raw bytes back to Float32Array
+        const floatArray = new Float32Array(
+          fullBuffer.buffer,
+          fullBuffer.byteOffset,
+          fullBuffer.length / 4
+        )
+
+        // 3. Create a WAV file from the Float32 PCM data
+        const wav = new WaveFile()
+        // Mono (1 channel), Sample Rate, 32-bit Float, Audio Data
+        wav.fromScratch(1, sampleRate, '32f', floatArray)
+
+        // 4. Save to a temporary file
+        const tempPath = join(app.getPath('temp'), `wiretap_${Date.now()}.wav`)
+        fs.writeFileSync(tempPath, wav.toBuffer())
+
+        console.log(`[Rust Wiretap] Audio saved to: ${tempPath}`)
+
+        // Return the path to React so it can send it to your Python backend!
+        resolve({ status: 'success', filePath: tempPath })
+      }, 10000) // 10,000 milliseconds = 10s
+    } catch (e) {
+      reject({ status: 'error', message: e.message })
+    }
+  })
+})
 
 function isPortInUse(port, host = BACKEND_HOST, timeoutMs = 600) {
   return new Promise((resolve) => {
