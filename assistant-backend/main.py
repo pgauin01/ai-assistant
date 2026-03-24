@@ -991,6 +991,44 @@ async def live_transcribe(websocket: WebSocket):
 
     last_text = ""
 
+    def squash_stutters(text: str) -> str:
+        """Removes duplicated phrases and overlapping text loops."""
+        if not text:
+            return ""
+
+        # 1. Clean up weird spacing and punctuation loops
+        text = re.sub(r'\s+', ' ', text).strip()
+        text = re.sub(r'([.!?])\s*\1+', r'\1', text) 
+        
+        # 2. Split into logical sentences/phrases
+        phrases = [p.strip() for p in re.split(r'(?<=[.!?])\s+', text) if p.strip()]
+        
+        if not phrases:
+            return text
+
+        # 3. Aggressive deduplication
+        deduped = []
+        for phrase in phrases:
+            # Check if this phrase is exactly the same as the LAST phrase we added
+            if deduped and phrase.lower() == deduped[-1].lower():
+                continue # Skip it!
+            
+            # Check if this phrase is a SUBSTRING of the last phrase (or vice versa)
+            if deduped and (phrase.lower() in deduped[-1].lower() or deduped[-1].lower() in phrase.lower()):
+                # Keep the longer one
+                if len(phrase) > len(deduped[-1]):
+                    deduped[-1] = phrase
+                continue
+            
+            deduped.append(phrase)
+
+        # 4. Check for the "A B A B" pattern
+        mid = len(deduped) // 2
+        if mid > 0 and deduped[:mid] == deduped[mid:]:
+            deduped = deduped[:mid]
+
+        return " ".join(deduped)
+
     try:
         while True:
             wav_bytes = await websocket.receive_bytes()
@@ -1000,42 +1038,40 @@ async def live_transcribe(websocket: WebSocket):
                 temp_path = temp_file.name
                 
             try:
-                # 1. Force greedy decoding (temperature=0.0) to stop wild hallucinations
                 segments, _ = whisper_model.transcribe(
                     temp_path,
                     language="en",
                     beam_size=5,
                     vad_filter=True,
-                    vad_parameters=dict(min_silence_duration_ms=400, speech_pad_ms=100),
+                    vad_parameters=dict(min_silence_duration_ms=200, speech_pad_ms=50),
                     condition_on_previous_text=False,
-                    temperature=0.0 
+                    temperature=0.0,
+                    compression_ratio_threshold=1.5,
+                    no_speech_threshold=0.5
                 )
                 
                 texts = []
                 for seg in segments:
-                    # --- THE KILL SWITCH ---
-                    # Whisper scores every segment on how likely it is to be silence/noise.
-                    # If it's over 60% likely to be noise, we instantly throw the text in the trash!
                     if getattr(seg, 'no_speech_prob', 0.0) < 0.6:
                         texts.append(seg.text.strip())
                         
                 raw_text = " ".join(texts).strip()
                 
-                # --- THE ULTIMATE STUTTER CURE ---
-                import re
-                # Split text into logical sentences based on punctuation
-                sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', raw_text) if s.strip()]
-                
-                mid = len(sentences) // 2
-                if mid > 0 and sentences[:mid] == sentences[mid:]:
-                    # If it perfectly looped (A B C A B C), squash it down to just (A B C)
-                    raw_text = " ".join(sentences[:mid])
-                # ---------------------------------
+                # Apply the new, aggressive deduplication filter
+                clean_text = squash_stutters(raw_text)
 
-                # 3. Only send if it actually contains clean text AND isn't a stale duplicate
-                if raw_text and raw_text != last_text and len(raw_text) > 2:
-                    last_text = raw_text 
-                    await websocket.send_json({"text": raw_text})
+                # Only send if clean, not duplicate of the LAST chunk, and actually contains a real word
+                if clean_text and clean_text != last_text and len(clean_text) > 2:
+                    
+                    # Prevent sending a chunk that is just a slight overlap of the previous chunk
+                    if last_text and (clean_text in last_text or last_text in clean_text):
+                        if len(clean_text) > len(last_text):
+                            last_text = clean_text
+                            await websocket.send_json({"text": clean_text})
+                        continue
+
+                    last_text = clean_text 
+                    await websocket.send_json({"text": clean_text})
                     
             except Exception as e:
                 print(f"Live WS Transcribe Error: {e}")
