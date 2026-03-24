@@ -444,14 +444,21 @@ async def transcribe(request: TranscribeRequest):
     if WhisperModel is not None:
         if whisper_model is None:
             whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=4)
+        
+        # --- THE FIX IS HERE ---
         segments, _ = whisper_model.transcribe(
             audio_path,
             language="en",
             beam_size=5,
             vad_filter=True,
         )
-        text = " ".join(segment.text.strip() for segment in segments).strip()
-        return {"text": text}
+        
+        # faster-whisper returns a generator, so we must iterate through it cleanly
+        texts = [seg.text.strip() for seg in segments if seg.text and seg.text.strip()]
+        transcript = " ".join(texts).strip()
+        
+        return {"text": transcript}
+        # -----------------------
 
     raise HTTPException(
         status_code=500,
