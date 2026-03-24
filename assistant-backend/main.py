@@ -18,10 +18,18 @@ import soundcard as sc
 import soundfile as sf
 import requests
 import re
+import json
 from fastapi import Request
 from fastapi.responses import JSONResponse
 import traceback
 import os
+from prompts import (
+    FAST_CODING_PROMPT,
+    CAREER_AGENT_PROMPT,
+    VISION_EXPLAIN_PROMPT,
+    VISION_FIX_PROMPT,
+    VISION_CREATE_PROMPT,
+)
 
 
 import tkinter as tk
@@ -29,6 +37,7 @@ from PIL import ImageGrab
 import moondream as md
 import sys
 import threading
+from fastapi.responses import JSONResponse, StreamingResponse
 
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # <--- ADD THIS FIX
@@ -189,42 +198,6 @@ np.fromstring = _safe_fromstring
 # ---------------------------------------------
 
 
-# CODING_SYSTEM_PROMPT = """
-# You are an elite, silent Staff Software Engineer.
-# Your ONLY function is to output highly optimized, production-ready code.
-
-# CRITICAL RULES:
-# 1. DEFAULT BEHAVIOR: Output ONLY highly optimized, production-ready code in a markdown block. No greetings, no fluff, no explanations.
-# 2. If the user asks for code, output ONLY the markdown code block.
-# 3. Handle edge cases efficiently.
-# 4. CONDITIONAL EXPLANATIONS: ONLY provide explanations IF explicitly asked.
-# """
-
-
-CODING_SYSTEM_PROMPT = """
-You are an elite Principal Full Stack AI Engineer and Systems Architect.
-
-YOUR CORE TECH STACK:
-- Backend: Python, FastAPI
-- Frontend: React, JavaScript, modern web standards
-- Cloud & DevOps: AWS, Azure, GCP, Docker, Kubernetes, CI/CD pipelines
-- AI/ML: Generative AI, Advanced RAG, LangGraph, Vector DBs, LiteLLM, AWS Bedrock
-
-YOUR CODING STANDARDS (WHITE CODING):
-1. Write extremely clean, modular, and scalable code.
-2. Always include proper error handling, type hinting (in Python), and edge-case management.
-3. Prioritize security, maintainability, and enterprise-grade architecture.
-4. When designing systems, think about state management, latency, and resource efficiency.
-
-COMMUNICATION STYLE:
-- Be concise, highly technical, and authoritative. 
-- Communicate complex technical concepts clearly, as if speaking to cross-functional stakeholders.
-- Never write fluff. Output code and architectural explanations directly.
-
-When the user asks you to build, debug, or explain something, process the request through the lens of this exact tech stack and these elite standards.
-"""
-
-
 app = FastAPI()
 
 @app.on_event("startup")
@@ -290,6 +263,8 @@ llm = ChatOllama(
     model=OLLAMA_MODEL,
     temperature=0.0,
     base_url=OLLAMA_BASE_URL,
+    num_ctx=2048,    
+    num_predict=1500
 )
 
 vision_llm = ChatOllama(
@@ -322,7 +297,7 @@ def build_message_history(command: UserCommand):
         if not history or not isinstance(history[-1], HumanMessage) or history[-1].content != command_text:
             history.append(HumanMessage(content=command_text))
 
-    return [SystemMessage(content=CODING_SYSTEM_PROMPT), *history]
+    return [SystemMessage(content=FAST_CODING_PROMPT), *history]
 
 
 def transcribe_audio_file(temp_audio_path: str) -> str:
@@ -362,100 +337,9 @@ def transcribe_audio_file(temp_audio_path: str) -> str:
     return " ".join(segment.text.strip() for segment in segments).strip()
 
 
-# @app.post("/agent/execute")
-# async def execute_command(command: UserCommand):
-#     formatted_messages = build_message_history(command)
-
-#     if len(formatted_messages) == 1:
-#         return {"status": "error", "response": "Please send a prompt."}
-
-#     try:
-#         response = llm.invoke(formatted_messages)
-#         return {"status": "success", "response": response.content}
-#     except Exception as error:
-#         return {"status": "error", "response": f"{error}"}
-
-# @app.post("/agent/execute")
-# async def execute_command(command: UserCommand):
-#     formatted_messages = build_message_history(command)
-
-#     # --- THE GLOBAL AUTO-ROUTER ---
-#     user_text_lower = command.text.lower()
-    
-#     # Define trigger words that automatically activate your Career Brain
-#     career_triggers = [
-#         "experience", "resume", "project", "portfolio", "interview", 
-#         "hustle bot", "hustlebot", "shadow os", "kirana", "challenge faced"
-#     ]
-    
-#     is_career_question = "[Quick Command: CAREER]" in command.text or any(kw in user_text_lower for kw in career_triggers)
-
-#     if is_career_question:
-#         # 1. LOUD FAILURE: Don't fail silently to the coding prompt!
-#         if not career_retriever:
-#             return {"status": "success", "response": "âš ï¸ **SYSTEM ALERT:** My career database is offline. Please run `python build_brain.py` and restart the backend."}
-        
-#         # 2. Extract JUST the user's question safely
-#         if "Question:\n\n" in command.text:
-#             question = command.text.split("Question:\n\n")[-1].strip()
-#         else:
-#             question = command.text.replace("[Quick Command: CAREER]", "").strip()
-        
-#         # 3. Search the FAISS database
-#         docs = career_retriever.invoke(question)
-        
-#         context_chunks = []
-#         for doc in docs:
-#             project_name = doc.metadata.get("Project", "Resume Data")
-#             section_name = doc.metadata.get("Section", "")
-#             chunk_text = f"PROJECT: {project_name} | SECTION: {section_name}\n{doc.page_content}"
-#             context_chunks.append(chunk_text)
-            
-#         context = "\n\n".join(context_chunks)
-        
-#         career_system_prompt = f"""
-#         You are an elite career agent representing the user.
-#         Answer the interview question based ONLY on this context about their past projects. 
-        
-#         CRITICAL RULES:
-#         1. DO NOT invent, guess, or hallucinate ANY technologies, databases, or frameworks. If it is not explicitly written in the context, DO NOT include it.
-#         2. ISOLATE PROJECTS: You MUST strictly isolate the context. Do NOT apply a technology or feature from one project to another.
-#         3. If the context does not contain the answer, say "I don't have that information in my career database."
-#         4. TEMPLATE ENFORCEMENT: If the user asks for a general explanation or says "tell me about [Project]", you MUST format your response using EXACTLY these 5 Markdown headings:
-#            ### 1. Overview
-#            ### 2. Tech Stack Used
-#            ### 3. Workflow and Architecture
-#            ### 4. Challenges & Solutions
-#            ### 5. Summary
-#            *CRITICAL: If the provided context is missing the information for any of these 5 sections, you MUST write exactly: "Data not available in context." Do not guess or invent filler.*
-#         5. EXPLAIN THE SOLUTIONS: Under the "Challenges & Solutions" heading, you MUST explicitly state how the challenge was solved. Include the exact Action taken and the Result achieved based on the context.
-
-#         EXPERIENCE CONTEXT:
-#         {context}
-#         """
-        
-#         # 4. CRITICAL FIX: Isolate the Context!
-#         # Wipe the older chat history so the small LLM doesn't get confused by previous coding tasks.
-#         formatted_messages = [
-#             SystemMessage(content=career_system_prompt.strip()),
-#             HumanMessage(content=question)
-#         ]
-#     # -----------------------------------
-
-#     if len(formatted_messages) == 1:
-#         return {"status": "error", "response": "Please send a prompt."}
-
-#     try:
-#         response = llm.invoke(formatted_messages)
-#         return {"status": "success", "response": response.content}
-#     except Exception as error:
-#         return {"status": "error", "response": f"{error}"}
-
 @app.post("/agent/execute")
 async def execute_command(command: UserCommand):
     formatted_messages = build_message_history(command)
-
-    # --- THE GLOBAL AUTO-ROUTER ---
     user_text_lower = command.text.lower()
     
     career_triggers = [
@@ -466,14 +350,13 @@ async def execute_command(command: UserCommand):
     
     is_career_question = "[Quick Command: CAREER]" in command.text or any(kw in user_text_lower for kw in career_triggers)
 
+    context = ""
     if is_career_question:
         if "Question:\n\n" in command.text:
             question = command.text.split("Question:\n\n")[-1].strip()
         else:
             question = command.text.replace("[Quick Command: CAREER]", "").strip()
 
-        # --- INTENT ROUTER: Bypass FAISS for direct project summaries ---
-        context = ""
         try:
             if "shadow os" in user_text_lower:
                 context = read_career_markdown("shadow_os.md")
@@ -486,67 +369,44 @@ async def execute_command(command: UserCommand):
 
             if context:
                 print("MACRO TRIGGERED: Bypassing LLM and returning raw document directly.")
-                return {"status": "success", "response": context}
+                # Return macro as a quick stream chunk
+                async def stream_macro():
+                    yield context
+                return StreamingResponse(stream_macro(), media_type="text/plain")
                 
             else:
-                # Fallback to FAISS for general questions ("How did you handle rate limits?")
                 if not career_retriever:
-                    return {"status": "success", "response": "**SYSTEM ALERT:** My career database is offline."}
+                    async def stream_error():
+                        yield "**SYSTEM ALERT:** My career database is offline."
+                    return StreamingResponse(stream_error(), media_type="text/plain")
 
                 docs = career_retriever.invoke(question)
-                context_chunks = []
-                for doc in docs:
-                    project_name = doc.metadata.get("Project", "Resume Data")
-                    chunk_text = f"PROJECT: {project_name}\n{doc.page_content}"
-                    context_chunks.append(chunk_text)
+                context_chunks = [f"PROJECT: {doc.metadata.get('Project', 'Resume Data')}\n{doc.page_content}" for doc in docs]
                 context = "\n\n".join(context_chunks)
-        except FileNotFoundError as file_error:
-            missing_file = os.path.basename(getattr(file_error, "filename", "") or "career file")
-            return {
-                "status": "error",
-                "response": (
-                    f"Missing career data file: {missing_file}. "
-                    f"Looked in: {CAREER_DATA_DIR}"
-                ),
-            }
-        # ----------------------------------------------------------------
-        career_system_prompt = f"""
-        You are an elite career agent representing the user.
-        Answer the interview question based ONLY on this context about their past projects. 
+        except Exception as file_error:
+            async def stream_err():
+                yield f"Missing career data file. Looked in: {CAREER_DATA_DIR}"
+            return StreamingResponse(stream_err(), media_type="text/plain")
         
-        CRITICAL RULES:
-        1. ABSOLUTE FACTUALITY: You are strictly forbidden from inventing, guessing, or hallucinating ANY details, features, target audiences, or trade-offs. 
-        2. DO NOT EXTRAPOLATE: If the user asks about a detail or trade-off that is not explicitly written in the text below, you MUST reply: "That information is not in the career database."
-        3. ISOLATE PROJECTS: Do NOT apply a technology or feature from one project to another.
-        4. TEMPLATE ENFORCEMENT: If the user says "tell me about [Project]", you MUST format your response using EXACTLY these 6 Markdown headings:
-           ### 1. Overview
-           ### 2. Tech Stack Used
-           ### 3. Workflow and Architecture
-           ### 4. Challenges & Solutions
-           ### 5. Summary
-           ### 6. Engineering Trade-offs & Q&A
-        5. EXPLAIN THE SOLUTIONS: Under "Challenges & Solutions", list EVERY challenge mentioned. Explicitly state the Situation, Action, and Result.
-        6. TRADE-OFFS: You must copy the exact Q&A and trade-offs provided in the context. DO NOT invent your own trade-offs.
-
-        EXPERIENCE CONTEXT:
-        {context}
-        """
-        
-        # Isolate context to prevent confusing the small LLM
         formatted_messages = [
-            SystemMessage(content=career_system_prompt.strip()),
+            SystemMessage(content=CAREER_AGENT_PROMPT.format(context=context).strip()),
             HumanMessage(content=question)
         ]
-    # -----------------------------------
 
     if len(formatted_messages) == 1:
-        return {"status": "error", "response": "Please send a prompt."}
+        async def stream_err(): yield "Please send a prompt."
+        return StreamingResponse(stream_err(), media_type="text/plain")
 
-    try:
-        response = llm.invoke(formatted_messages)
-        return {"status": "success", "response": response.content}
-    except Exception as error:
-        return {"status": "error", "response": f"{error}"}
+    # -Stream tokens directly to React ---
+    async def generate_response():
+        try:
+            for chunk in llm.stream(formatted_messages):
+                if chunk.content:
+                    yield chunk.content
+        except Exception as error:
+            yield f"\n\nError generating response: {error}"
+
+    return StreamingResponse(generate_response(), media_type="text/plain")
 
 # @app.post("/agent/voice")
 # async def execute_voice(audio: UploadFile = File(...)):
@@ -884,66 +744,6 @@ def clean_ocr_noise(text: str) -> str:
     return "\n".join(cleaned_lines)
 
 
-# -----------------------------
-# Vision Endpoint
-# -----------------------------
-# @app.post("/agent/vision")
-# async def execute_vision_command(request: ChatRequest):
-#     try:
-#         # 1. Determine the mode first
-#         mode = "create" 
-#         instruction = "Implement this feature."
-        
-#         if request.messages:
-#             last_msg = request.messages[-1].content
-#             if "[Vision: FIX]" in last_msg: mode = "fix"
-#             elif "[Vision: EXPLAIN]" in last_msg: mode = "explain"
-#             elif "[Vision: HELP]" in last_msg: mode = "help"
-            
-#             if "] " in last_msg:
-#                 instruction = last_msg.split("] ", 1)[-1]
-#             else:
-#                 instruction = last_msg
-
-#         # 2. Conditionally capture the screen based on the mode
-#         if mode == "create":
-#             print("Capturing full screen for Create mode...")
-#             screenshot = ImageGrab.grab()  # Instant full screen
-#         else:
-#             print("Select area on screen...")
-#             screenshot = get_screen_snip() # Opens the drawing tool
-
-#         # 3. OCR the resulting image
-#         ocr_text = extract_text_from_image(screenshot)
-#         print("OCR TEXT:\n", ocr_text)
-
-#         # 4. Handle based on the mode
-#         if mode == "create":
-#             # Uses our robust regex and fallback to find the /// or 'write' command
-#             command = extract_command(ocr_text)
-#             if not command:
-#                 return {"status": "error", "response": "No /// or create command detected on screen."}
-#             command = clean_command(command)
-            
-#         else:
-#             # For Fix/Explain/Help, just grab the text from the snipped box
-#             code_snippet = ocr_text.strip()
-            
-#             if len(code_snippet) > 1500:
-#                 code_snippet = code_snippet[:1500] + "\n...[truncated]"
-
-#             command = f"{instruction}\n\nCode on screen:\n```\n{code_snippet}\n```"
-
-#         print(f"PENDING COMMAND: {command}")
-#         return {
-#             "status": "needs_confirmation",
-#             "command": command,
-#             "response": None 
-#         }
-
-#     except Exception as e:
-#         print(f"Error: {e}")
-#         return {"status": "error", "response": str(e)}
 
 
 @app.post("/agent/vision")
@@ -970,36 +770,49 @@ async def execute_vision_command(request: ChatRequest):
 
         # 3. Formulate the "Sniper" Prompt
         if mode == "create":
-            prompt_text = "Scan this entire image. Locate the code comment that starts with '///'. Output ONLY the sentence written immediately after the '///'. Do not output any other text."
-        else:
-            # For Fix/Explain, we need the command AND the code!
-            prompt_text = "Scan this entire image. Locate the code comment starting with '///'. Extract that comment, and ALSO perfectly extract the block of code immediately below it. Output ONLY the comment and the code."
+            prompt_text = (
+                "Scan this entire image. Look for any natural language text or code comment "
+                "that contains an instruction to build something (e.g., words like 'create', 'write', 'build', 'implement', 'generate'). "
+                "Extract ONLY that instructional sentence. Do not output any surrounding code or conversational text."
+            )
+        elif mode == "explain":
+            prompt_text = (
+                "Scan this entire image and identify the primary block of code or technical text visible. "
+                "Perfectly extract this code block. Wrap the extracted code strictly in standard Markdown backticks (```). "
+                "Do not include any greetings or conversational filler."
+            )
+        elif mode == "fix":
+            prompt_text = (
+                "Scan this entire image and identify the primary block of code visible on the screen. "
+                "Perfectly extract this entire code block so it can be debugged. "
+                "Wrap the extracted code strictly in standard Markdown backticks (```). "
+                "Do not include any greetings or conversational filler."
+            )
 
         # 4. Query the Moondream Cloud API
-        print("Sending Stealth Image to Moondream Cloud API...")
-        # Notice how clean this is! No Base64 encoding required, just pass the PIL Image directly.
+        print(f"Sending Stealth Image to Moondream Cloud API for {mode.upper()}...")
         result = moondream_cloud.query(screenshot, prompt_text)
         
         extracted_text = result.get("answer", "").strip()
         print(f"RAW MOONDREAM OUTPUT:\n{extracted_text}")
 
         # 5. Format the final command for the UI
+        # We process the user's typed input box text if they provided any
+        custom_instructions = ""
+        if "Additional user instructions:" in instruction:
+            user_text = instruction.split("Additional user instructions:")[-1].strip()
+            custom_instructions = f"// User Note: {user_text}\n\n"
+
         if mode == "create":
-            command = extract_command(extracted_text)
-            if not command:
-                command = extracted_text 
+            # For Create, we just pass the extracted instruction + the user's typed notes
+            # We no longer need the brittle extract_command() regex!
+            command = f"{custom_instructions}{extracted_text}".strip()
+            
         else:
-            # Clean it up so it formats beautifully in the UI
-            if len(extracted_text) > 1500:
-                extracted_text = extracted_text[:1500] + "\n...[truncated]"
+            # For Fix and Explain, we truncate if it's too massive, then append notes
+            if len(extracted_text) > 2000:
+                extracted_text = extracted_text[:2000] + "\n...[truncated]"
                 
-            # Only keep the user's custom typed text, drop the generic boilerplate!
-            custom_instructions = ""
-            if "Additional user instructions:" in instruction:
-                user_text = instruction.split("Additional user instructions:")[-1].strip()
-                custom_instructions = f"// User Note: {user_text}\n\n"
-                
-            # The UI will now ONLY show the clean code + your custom notes
             command = f"{custom_instructions}{extracted_text}".strip()
 
         print(f"FINAL COMMAND: {command}")
@@ -1022,100 +835,47 @@ async def confirm_and_execute(data: dict):
     mode = data.get("mode", "").lower()
 
     if not command:
-        return {"status": "error", "response": "No command provided"}
+        async def stream_err():
+            yield "No command provided"
+        return StreamingResponse(stream_err(), media_type="text/plain")
 
-    # --- 1. EXPLAIN MODE ---
-    if mode == "explain":
-        prompt = f"""
-        You are an elite Software Engineering Tutor.
-        The user wants an explanation of the following code or concept extracted from their screen.
-        
-        Task:
-        {command}
+    mode_router = {
+        "explain": (VISION_EXPLAIN_PROMPT, 0.3),
+        "fix": (VISION_FIX_PROMPT, 0.1),
+        "create": (VISION_CREATE_PROMPT, 0.1),
+    }
+    prompt_template, temperature = mode_router.get(mode, mode_router["create"])
+    prompt = prompt_template.format(command=command)
 
-        CRITICAL RULES:
-        1. Deeply analyze the concept or code.
-        2. You MUST format your response EXACTLY using these headings:
-        
-        ### 📖 Overview & Purpose
-        [Write a clear, high-level summary of what this code or concept does]
+    async def generate_response():
+        try:
+            with requests.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "prompt": prompt,
+                    "stream": True,
+                    "options": {
+                        "temperature": temperature,
+                        "num_predict": 1500
+                    }
+                },
+                stream=True
+            ) as response:
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                    try:
+                        payload = json.loads(line.decode("utf-8"))
+                        chunk = payload.get("response", "")
+                        if chunk:
+                            yield chunk
+                    except Exception:
+                        continue
+        except Exception as e:
+            yield f"\n\nError generating response: {e}"
 
-        ### 🧠 Architecture & Deep Dive
-        [Provide a highly technical breakdown. Include under-the-hood mechanics, design patterns, or Time/Space complexity if applicable.]
-        """
-        temperature = 0.3
-
-    # --- 2. FIX MODE ---
-    elif mode == "fix":
-        prompt = f"""
-        You are an elite Senior Software Engineer.
-        The user has provided code from their screen that contains bugs.
-
-        Task:
-        {command}
-
-        CRITICAL RULES:
-        1. Analyze the logic. Look for scope issues, bad math, or incorrect syntax.
-        2. Do NOT invent OCR typos if the code is just logically wrong.
-        3. You MUST format your response EXACTLY using these headings:
-        
-        ### 🐛 Bug Analysis
-        [Explain the specific logical or syntax bugs, why they break the code, and how to fix them]
-
-        ### 🛠️ Corrected Code
-        ```javascript
-        // Your final, production-ready fixed code here
-        ```
-        """
-        temperature = 0.1
-
-    # --- 3. CREATE MODE ---
-    else:
-        prompt = f"""
-        You are an elite Senior Software Engineer.
-
-        Task:
-        {command}
-
-        CRITICAL RULES:
-        1. Write the implementation for the requested feature based on the context.
-        2. You MUST format your response EXACTLY using these headings:
-
-        ### ✨ Implementation Strategy
-        [Briefly explain the approach and libraries/functions used]
-
-        ### 🛠️ Code
-        ```javascript
-        // Your feature implementation here
-        ```
-        """
-        temperature = 0.1
-
-    try:
-        response = requests.post(
-            f"{OLLAMA_BASE_URL}/api/generate",
-            json={
-                "model": OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": temperature, 
-                    "num_predict": 1500
-                }
-            }
-        )
-
-        result = response.json()
-        raw = result.get("response", "")
-
-        if not raw:
-            return {"status": "error", "response": "LLM returned empty response"}
-
-        # Return the beautiful markdown text straight to React
-        return {"status": "success", "response": raw.strip()}
-
-    except Exception as e:
-        return {"status": "error", "response": str(e)}
+    return StreamingResponse(generate_response(), media_type="text/plain")
 
 # -----------------------------
 # Server Startup (Crucial for .exe)

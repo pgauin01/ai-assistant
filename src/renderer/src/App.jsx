@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+﻿import { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism' // VS Code Dark Theme
@@ -156,43 +156,60 @@ function App() {
   }
 
   const sendTextMessage = async (displayCommand, augmentedPrompt = null) => {
-    // If we have a hidden augmented prompt, use it for the backend. Otherwise use the normal text.
     const payloadText = augmentedPrompt || displayCommand
-
-    // 1. Update the UI with the clean, short command (e.g., "/explain closure")
     const userMessage = { role: 'user', content: displayCommand }
     const nextMessages = [...messages, userMessage]
 
     setMessages(nextMessages)
     setInput('')
-    setIsThinking(true)
+    setIsThinking(true) // Briefly show "Thinking..." while making the network request
 
     try {
-      // 2. Swap out the last message with the massive augmented prompt for the AI to read
       const backendMessages = [...messages, { role: 'user', content: payloadText }]
 
-      const res = await fetchBackend('/agent/execute', {
+      const res = await fetch('http://127.0.0.1:8000/agent/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: payloadText, messages: backendMessages })
       })
-      const data = await res.json()
-      const assistantReply =
-        typeof data?.response === 'string' && data.response.trim()
-          ? data.response
-          : 'No response returned by the assistant.'
 
-      setMessages((prev) => [...prev, { role: 'assistant', content: assistantReply }])
+      // The moment the server responds, drop the "Thinking..." pulse
+      setIsThinking(false)
+
+      // Inject a blank assistant message that we will actively type into
+      setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
+
+      // Open the streaming pipeline
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder('utf-8')
+      let assistantReply = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        // Decode the incoming byte chunk and append it
+        const textChunk = decoder.decode(value, { stream: true })
+        assistantReply += textChunk
+
+        // Dynamically update the LAST message in the array
+        setMessages((prev) => {
+          const newMessages = [...prev]
+          newMessages[newMessages.length - 1].content = assistantReply
+          return newMessages
+        })
+      }
     } catch (error) {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Error: Could not reach the AI backend.' }
+        {
+          role: 'assistant',
+          content: 'Error: Could not reach the AI backend or stream interrupted.'
+        }
       ])
-    } finally {
       setIsThinking(false)
     }
   }
-
   const sendVoiceMessage = async (audioBlob) => {
     setIsThinking(true)
 
@@ -308,7 +325,7 @@ function App() {
           return
         }
 
-        // 🛑 THE STEALTH FIX: Sever the hardware connection immediately
+        // ðŸ›‘ THE STEALTH FIX: Sever the hardware connection immediately
         // the millisecond the recording stops. This hides the Windows Mic Icon.
         stopMediaStream()
 
@@ -613,32 +630,41 @@ function App() {
       const res = await fetchBackend('/agent/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // body: JSON.stringify({ command: pendingCommand })
         body: JSON.stringify({
           command: pendingCommand,
-          mode: visionMode // Pass the mode state here!
+          mode: visionMode
         })
       })
 
-      const data = await res.json()
+      setIsThinking(false)
+      setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
 
-      if (data.status === 'success') {
-        setMessages((prev) => [...prev, { role: 'assistant', content: data.response }])
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          { role: 'assistant', content: '❌ Failed to execute command' }
-        ])
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder('utf-8')
+      let assistantReply = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const textChunk = decoder.decode(value, { stream: true })
+        assistantReply += textChunk
+
+        setMessages((prev) => {
+          const newMessages = [...prev]
+          newMessages[newMessages.length - 1].content = assistantReply
+          return newMessages
+        })
       }
     } catch (err) {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: '❌ Network error during execution' }
+        { role: 'assistant', content: 'Network error during execution' }
       ])
-    } finally {
-      setPendingCommand(null)
       setIsThinking(false)
     }
+
+    setPendingCommand(null)
   }
 
   return (
@@ -647,7 +673,7 @@ function App() {
       <div className="flex flex-col items-center pointer-events-auto">
         {/* Dedicated draggable strip so there's always a real drag target */}
         <div
-          className="w-[700px] h-8 mb-2 flex items-center justify-center cursor-grab active:cursor-grabbing"
+          className="w-[700px] h-8 mb-2 flex items-center justify-center cursor-default"
           aria-hidden="true"
           onPointerDown={handleDragHandlePointerDown}
           onPointerMove={handleDragHandlePointerMove}
@@ -895,7 +921,7 @@ function App() {
                   }}
                   className="px-4 py-3 text-sm text-gray-200 hover:bg-yellow-600 hover:text-white text-left transition-colors border-b border-gray-700"
                 >
-                  🆘 Help
+                  ðŸ†˜ Help
                 </button> */}
                 <button
                   onPointerDown={(e) => {
