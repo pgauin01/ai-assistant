@@ -958,7 +958,7 @@ function App() {
             onPointerDown={(e) => e.stopPropagation()}
             placeholder={
               isLiveTranscribing
-                ? '🔴 Live System Capturing... (Ctrl+T to stop)'
+                ? '🔴 Live System Capturing... (Ctrl+Q to stop)'
                 : isListening
                   ? 'Listening to system audio...'
                   : isRecording
