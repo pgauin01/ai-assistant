@@ -65,6 +65,13 @@ function App() {
   const [slashFilter, setSlashFilter] = useState('')
   const [slashIndex, setSlashIndex] = useState(0)
   const [visionMode, setVisionMode] = useState('create')
+  const [isLiveTranscribing, setIsLiveTranscribing] = useState(false)
+  const isLiveTranscribingRef = useRef(false)
+  const liveWsRef = useRef(null)
+
+  useEffect(() => {
+    isLiveTranscribingRef.current = isLiveTranscribing
+  }, [isLiveTranscribing])
 
   const showMicToast = (message, duration = 1200) => {
     if (micToastTimeoutRef.current) {
@@ -155,6 +162,64 @@ function App() {
       }
     }
   }, [])
+
+  // 1. Listen for Ctrl+T
+  useEffect(() => {
+    if (window.api && window.api.onToggleLiveTranscription) {
+      const cleanup = window.api.onToggleLiveTranscription(() => {
+        toggleLiveTranscription()
+      })
+      return () => cleanup?.()
+    }
+  }, [])
+
+  // 2. Stream the Rust audio to Python
+  useEffect(() => {
+    if (window.api && window.api.onLiveSystemAudioChunk) {
+      const cleanup = window.api.onLiveSystemAudioChunk((chunk) => {
+        if (liveWsRef.current && liveWsRef.current.readyState === WebSocket.OPEN) {
+          liveWsRef.current.send(chunk)
+        }
+      })
+      return () => cleanup?.()
+    }
+  }, [])
+
+  const toggleLiveTranscription = () => {
+    if (isLiveTranscribingRef.current) {
+      // STOP LIVE TRANSCRIPTION
+      window.api.stopLiveSystemCapture()
+      if (liveWsRef.current) liveWsRef.current.close()
+      setIsLiveTranscribing(false)
+    } else {
+      // START LIVE TRANSCRIPTION
+      const ws = new WebSocket('ws://127.0.0.1:8000/ws/live-transcribe')
+      liveWsRef.current = ws
+
+      ws.onopen = () => {
+        setIsLiveTranscribing(true)
+        setInput('')
+        setInputText('')
+
+        // Tell the Rust backend to start capturing OS audio!
+        window.api.startLiveSystemCapture()
+      }
+
+      ws.onmessage = (e) => {
+        const data = JSON.parse(e.data)
+        if (data.text) {
+          // Append the new text to whatever is already in the input box!
+          setInput((prev) => (prev + ' ' + data.text).trim())
+          setInputText((prev) => (prev + ' ' + data.text).trim())
+        }
+      }
+
+      ws.onclose = () => {
+        setIsLiveTranscribing(false)
+        window.api.stopLiveSystemCapture()
+      }
+    }
+  }
 
   const closeOverlay = () => {
     setInput('')
@@ -892,17 +957,19 @@ function App() {
             // STOP the drag if you click inside the input box
             onPointerDown={(e) => e.stopPropagation()}
             placeholder={
-              isListening
-                ? 'Listening to system audio...'
-                : isRecording
-                ? 'Recording... release to send'
-                : isThinking
-                  ? 'Thinking...'
-                  : 'Ask your assistant...'
+              isLiveTranscribing
+                ? '🔴 Live System Capturing... (Ctrl+T to stop)'
+                : isListening
+                  ? 'Listening to system audio...'
+                  : isRecording
+                    ? 'Recording... release to send'
+                    : isThinking
+                      ? 'Thinking...'
+                      : 'Ask your assistant...'
             }
             className={`w-full p-4 pl-14 pr-20 text-xl rounded-2xl shadow-2xl backdrop-blur-md outline-none border transition-all font-sans cursor-text
               ${
-                isThinking || isRecording || isListening
+                isThinking || isRecording || isListening || isLiveTranscribing
                   ? 'bg-gray-800/80 text-gray-400 border-blue-500/50 animate-pulse'
                   : 'bg-gray-900/60 text-gray-100 border-gray-700 focus:border-blue-500 placeholder-gray-500'
               }`}

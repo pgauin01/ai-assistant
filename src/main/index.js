@@ -146,6 +146,59 @@ ipcMain.handle('wiretap-system', async () => {
   })
 })
 
+let liveCapturer = null
+let liveAudioInterval = null
+
+ipcMain.on('start-live-system-capture', (event) => {
+  if (liveCapturer) return
+  console.log('[Rust] Starting Live System Audio Stream...')
+
+  liveCapturer = new AudioCapturer()
+  let pcmChunks = []
+  let sampleRate = 48000
+
+  try {
+    sampleRate = liveCapturer.startCapture((err, buffer) => {
+      if (!err) pcmChunks.push(buffer)
+    })
+
+    // Every 2 seconds, package the raw audio into a valid WAV file and send to React
+    liveAudioInterval = setInterval(() => {
+      if (pcmChunks.length === 0) return
+
+      const fullBuffer = Buffer.concat(pcmChunks)
+      pcmChunks = [] // Reset for the next 2-second block
+
+      const floatArray = new Float32Array(
+        fullBuffer.buffer,
+        fullBuffer.byteOffset,
+        fullBuffer.length / 4
+      )
+
+      const wav = new WaveFile()
+      wav.fromScratch(1, sampleRate, '32f', floatArray)
+
+      if (mainWindow) {
+        mainWindow.webContents.send('live-system-audio-chunk', wav.toBuffer())
+      }
+    }, 2000) // 2000ms = 2 second chunks
+  } catch (e) {
+    console.error('Live Capture Error:', e)
+  }
+})
+
+ipcMain.on('stop-live-system-capture', () => {
+  if (liveCapturer) {
+    console.log('[Rust] Stopping Live System Audio Stream...')
+    liveCapturer.stopCapture()
+    liveCapturer = null
+  }
+  if (liveAudioInterval) {
+    clearInterval(liveAudioInterval)
+    liveAudioInterval = null
+  }
+})
+
 function isPortInUse(port, host = BACKEND_HOST, timeoutMs = 600) {
   return new Promise((resolve) => {
     const socket = new net.Socket()

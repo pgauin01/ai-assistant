@@ -5,7 +5,7 @@ import warnings
 import base64
 from io import BytesIO
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 try:
@@ -977,6 +977,46 @@ async def confirm_and_execute(data: dict):
             yield f"\n\nError generating response: {e}"
 
     return StreamingResponse(generate_response(), media_type="text/plain")
+
+@app.websocket("/ws/live-transcribe")
+async def live_transcribe(websocket: WebSocket):
+    await websocket.accept()
+    global whisper_model
+    
+    if whisper_model is None:
+        if WhisperModel is None:
+            await websocket.close(code=1011)
+            return
+        whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=4)
+
+    try:
+        while True:
+            # React is sending complete, valid 2-second .wav files!
+            wav_bytes = await websocket.receive_bytes()
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+                temp_file.write(wav_bytes)
+                temp_path = temp_file.name
+                
+            try:
+                segments, _ = whisper_model.transcribe(
+                    temp_path,
+                    language="en",
+                    beam_size=5,
+                    vad_filter=True, # Keeps it quiet if no one is talking in the video
+                )
+                text = " ".join(seg.text.strip() for seg in segments if seg.text and seg.text.strip()).strip()
+                
+                if text:
+                    await websocket.send_json({"text": text})
+            except Exception as e:
+                print(f"Live WS Transcribe Error: {e}")
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                    
+    except WebSocketDisconnect:
+        print("Live transcription WebSocket disconnected.")
 
 # -----------------------------
 # Server Startup (Crucial for .exe)

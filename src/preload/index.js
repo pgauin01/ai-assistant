@@ -13,7 +13,19 @@ const api = {
     ipcRenderer.on('toggle-mic', listener)
     return () => ipcRenderer.removeListener('toggle-mic', listener)
   },
-  wiretapSystem: () => ipcRenderer.invoke('wiretap-system')
+  wiretapSystem: () => ipcRenderer.invoke('wiretap-system'),
+  onToggleLiveTranscription: (callback) => {
+    const listener = () => callback()
+    ipcRenderer.on('toggle-live-transcription', listener)
+    return () => ipcRenderer.removeListener('toggle-live-transcription', listener)
+  },
+  startLiveSystemCapture: () => ipcRenderer.send('start-live-system-capture'),
+  stopLiveSystemCapture: () => ipcRenderer.send('stop-live-system-capture'),
+  onLiveSystemAudioChunk: (callback) => {
+    const listener = (event, chunk) => callback(chunk)
+    ipcRenderer.on('live-system-audio-chunk', listener)
+    return () => ipcRenderer.removeListener('live-system-audio-chunk', listener)
+  }
 }
 
 if (process.contextIsolated) {
