@@ -991,7 +991,7 @@ async def live_transcribe(websocket: WebSocket):
 
     try:
         while True:
-            # React is sending complete, valid 2-second .wav files!
+            # Receive 2-second .wav file from React
             wav_bytes = await websocket.receive_bytes()
             
             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
@@ -1003,7 +1003,7 @@ async def live_transcribe(websocket: WebSocket):
                     temp_path,
                     language="en",
                     beam_size=5,
-                    vad_filter=True, # Keeps it quiet if no one is talking in the video
+                    vad_filter=True, # Keeps it quiet during silence
                 )
                 text = " ".join(seg.text.strip() for seg in segments if seg.text and seg.text.strip()).strip()
                 
