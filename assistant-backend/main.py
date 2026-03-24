@@ -8,6 +8,7 @@ from io import BytesIO
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+import whisper
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
@@ -233,7 +234,12 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -258,6 +264,9 @@ class Message(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[Message]
 
+class TranscribeRequest(BaseModel):
+    audio_path: str
+
 
 llm = ChatOllama(
     model=OLLAMA_MODEL,
@@ -277,6 +286,7 @@ MOONDREAM_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlfaWQiOiI0NGU2Y2
 moondream_cloud = md.vl(api_key=MOONDREAM_API_KEY)
 
 whisper_model = None
+openai_whisper_model = whisper.load_model("base")
 
 
 def build_message_history(command: UserCommand):
@@ -407,6 +417,12 @@ async def execute_command(command: UserCommand):
             yield f"\n\nError generating response: {error}"
 
     return StreamingResponse(generate_response(), media_type="text/plain")
+
+
+@app.post("/transcribe")
+async def transcribe(request: TranscribeRequest):
+    result = openai_whisper_model.transcribe(request.audio_path)
+    return {"text": result.get("text", "").strip()}
 
 @app.post("/agent/voice")
 async def execute_voice(audio: UploadFile = File(...)):
