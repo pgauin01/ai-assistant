@@ -359,6 +359,14 @@ app.whenReady().then(() => {
       mainWindow.webContents.send('toggle-mic')
     }
   })
+
+  globalShortcut.register('CommandOrControl+S', () => {
+    if (mainWindow) {
+      mainWindow.show()
+      mainWindow.focus()
+      mainWindow.webContents.send('toggle-live-transcription')
+    }
+  })
 })
 
 app.on('will-quit', () => {
