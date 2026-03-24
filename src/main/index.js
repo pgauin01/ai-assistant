@@ -360,7 +360,7 @@ app.whenReady().then(() => {
     }
   })
 
-  globalShortcut.register('CommandOrControl+S', () => {
+  globalShortcut.register('CommandOrControl+A', () => {
     if (mainWindow) {
       mainWindow.show()
       mainWindow.focus()
