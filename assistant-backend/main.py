@@ -408,34 +408,6 @@ async def execute_command(command: UserCommand):
 
     return StreamingResponse(generate_response(), media_type="text/plain")
 
-# @app.post("/agent/voice")
-# async def execute_voice(audio: UploadFile = File(...)):
-#     suffix = ".webm"
-
-#     if audio.filename and "." in audio.filename:
-#         suffix = "." + audio.filename.rsplit(".", 1)[-1]
-
-#     temp_audio_path = None
-
-#     try:
-#         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-#             temp_audio_path = temp_file.name
-#             temp_file.write(await audio.read())
-
-#         transcript = transcribe_audio_file(temp_audio_path)
-
-#         if not transcript:
-#             return {"status": "error", "response": "Could not transcribe audio."}
-
-#         return {"status": "success", "transcript": transcript}
-
-#     except Exception as error:
-#         return {"status": "error", "response": f"{error}"}
-
-#     finally:
-#         if temp_audio_path and os.path.exists(temp_audio_path):
-#             os.remove(temp_audio_path)
-
 @app.post("/agent/voice")
 async def execute_voice(audio: UploadFile = File(...)):
     print(f"[DEBUG] Received voice payload. Filename: {audio.filename}")
@@ -488,107 +460,179 @@ async def listen_to_system_audio():
     temp_audio_path = None
 
     try:
-        print("Available Speakers:")
         speakers = sc.all_speakers()
+        if not speakers:
+            return {"status": "error", "transcript": "No output speakers available for loopback capture."}
+
+        print("Available Speakers:")
         for sp in speakers:
             print(f"{sp.name} | id={sp.id}")
 
-        # ðŸ”¥ Smart device selection (Headphones > FxSound > Default)
-        selected_speaker = None
+        # Build a deterministic preference list, then validate each candidate by opening loopback.
+        # This avoids locking onto a single brand/device and handles machines with multiple virtual outputs.
+        keyword_priority = [
+            ("realtek", 0),
+            ("headphones", 1),
+            ("speakers", 2),
+            ("fxsound", 3),
+            ("virtual", 4),
+        ]
 
-        for sp in speakers:
-            name = sp.name.lower()
-            if "headphones" in name and "hands-free" not in name:
+        ranked = []
+        for idx, sp in enumerate(speakers):
+            name = (sp.name or "").lower()
+            if "hands-free" in name:
+                continue
+            rank = 100
+            for kw, kw_rank in keyword_priority:
+                if kw in name:
+                    rank = kw_rank
+                    break
+            ranked.append((rank, idx, sp))
+
+        default_speaker = sc.default_speaker()
+        if default_speaker is not None:
+            ranked.insert(0, (-1, -1, default_speaker))
+
+        loopback_mic = None
+        selected_speaker = None
+        seen_ids = set()
+
+        for _, _, sp in sorted(ranked, key=lambda x: (x[0], x[1])):
+            if sp.id in seen_ids:
+                continue
+            seen_ids.add(sp.id)
+            try:
+                candidate = sc.get_microphone(sp.id, include_loopback=True)
+                # Validate the device can actually be opened at the target format.
+                with candidate.recorder(samplerate=48000, blocksize=2048):
+                    pass
+                loopback_mic = candidate
                 selected_speaker = sp
                 break
+            except Exception as loop_err:
+                print(f"[LOOPBACK SKIP] {sp.name}: {loop_err}")
 
-        if not selected_speaker:
-            for sp in speakers:
-                if "fxsound" in sp.name.lower():
-                    selected_speaker = sp
-                    break
-
-        if not selected_speaker:
-            selected_speaker = sc.default_speaker()
+        if loopback_mic is None or selected_speaker is None:
+            return {"status": "error", "transcript": "Could not initialize a loopback recording device."}
 
         print(f"Using speaker: {selected_speaker.name}")
 
-        loopback_mic = sc.get_microphone(selected_speaker.id, include_loopback=True)
-
         record_seconds = 10
         sample_rate = 48000
+        block_size = 2048
+        num_frames = int(sample_rate * record_seconds)
 
         print(f"Recording {record_seconds}s of system audio...")
+        with loopback_mic.recorder(samplerate=sample_rate, blocksize=block_size) as mic:
+            audio_data = mic.record(numframes=num_frames)
 
-        with loopback_mic.recorder(samplerate=sample_rate, blocksize=4096) as mic:
-            audio_data = mic.record(numframes=int(sample_rate * record_seconds))
+        audio_data = np.asarray(audio_data, dtype=np.float32)
+        if audio_data.size == 0:
+            return {"status": "error", "transcript": "No audio frames captured from loopback device."}
 
-        # ðŸ”Š Validate signal
-        max_amp = float(np.max(np.abs(audio_data)))
-        print(f" Max amplitude: {max_amp}")
+        # Normalize to 2D [frames, channels] if the backend returns 1D for mono.
+        if audio_data.ndim == 1:
+            audio_data = audio_data.reshape(-1, 1)
+        elif audio_data.ndim > 2:
+            audio_data = np.squeeze(audio_data)
+            if audio_data.ndim == 1:
+                audio_data = audio_data.reshape(-1, 1)
+            elif audio_data.ndim != 2:
+                return {"status": "error", "transcript": f"Unexpected audio shape: {audio_data.shape}"}
 
-        if max_amp < 1e-5:
-            return {
-                "status": "error",
-                "transcript": "No system audio detected."
-            }
+        # Drop NaN/Inf early; these poison RMS and Whisper input.
+        if not np.isfinite(audio_data).all():
+            audio_data = np.nan_to_num(audio_data, nan=0.0, posinf=0.0, neginf=0.0)
 
-        # ðŸ”„ Convert to mono
-        if len(audio_data.shape) > 1:
-            audio_data = audio_data.mean(axis=1)
+        # Convert to mono before amplitude checks so one dead channel doesn't skew metrics.
+        mono = audio_data.mean(axis=1)
+        mono = mono.astype(np.float32, copy=False)
 
-        # ðŸ’¾ Save temp audio
+        peak = float(np.max(np.abs(mono))) if mono.size else 0.0
+        rms = float(np.sqrt(np.mean(np.square(mono)))) if mono.size else 0.0
+        print(f"[AUDIO] raw_peak={peak:.8f} raw_rms={rms:.8f} frames={mono.shape[0]}")
+
+        # Very low energy likely means actual silence or wrong device.
+        if peak < 1e-6 and rms < 1e-7:
+            return {"status": "error", "transcript": "No system audio detected."}
+
+        # Remove DC offset (common with some virtual devices) before gain staging.
+        mono = mono - float(np.mean(mono))
+        peak = float(np.max(np.abs(mono))) if mono.size else 0.0
+        rms = float(np.sqrt(np.mean(np.square(mono)))) if mono.size else 0.0
+
+        # Robust gain staging:
+        # - Lift quiet captures up to a usable RMS.
+        # - Clamp loud captures to avoid clipping and Whisper degradation.
+        target_rms = 0.08
+        target_peak = 0.95
+        min_rms_for_gain = 1e-5
+        max_gain = 50.0
+
+        gain = 1.0
+        if rms >= min_rms_for_gain:
+            gain = target_rms / rms
+        elif peak > 0.0:
+            # If RMS is tiny but non-zero, use peak-based fallback.
+            gain = target_peak / peak
+
+        gain = float(np.clip(gain, 0.05, max_gain))
+        mono = mono * gain
+
+        post_peak = float(np.max(np.abs(mono))) if mono.size else 0.0
+        if post_peak > target_peak and post_peak > 0:
+            mono = mono * (target_peak / post_peak)
+
+        mono = np.clip(mono, -1.0, 1.0).astype(np.float32, copy=False)
+
+        post_rms = float(np.sqrt(np.mean(np.square(mono)))) if mono.size else 0.0
+        post_peak = float(np.max(np.abs(mono))) if mono.size else 0.0
+        print(
+            f"[AUDIO] gain={gain:.4f} post_peak={post_peak:.8f} "
+            f"post_rms={post_rms:.8f}"
+        )
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
             temp_audio_path = temp_file.name
-            sf.write(temp_audio_path, audio_data, sample_rate)
+            # Explicit subtype improves compatibility across Whisper/ffmpeg decoders.
+            sf.write(temp_audio_path, mono, sample_rate, subtype="PCM_16")
 
-        print(" Transcribing audio...")
+        print("Transcribing audio...")
 
-        # ðŸ”¥ Improved transcription
         global whisper_model
         if whisper_model is None:
             if WhisperModel is None:
                 raise RuntimeError("faster-whisper not installed")
-            whisper_model = WhisperModel("medium.en", device="cpu", compute_type="int8")
+            whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=4)
+
+        optimized_jargon="Python, JavaScript, TypeScript, React, Next.js, FastAPI, Node.js, AWS, Docker, AI, LangChain, API",
+    
 
         segments, _ = whisper_model.transcribe(
             temp_audio_path,
             language="en",
+            task="transcribe",
             beam_size=5,
+            best_of=5,
             vad_filter=False,
-            vad_parameters=dict(min_silence_duration_ms=500),
-            initial_prompt="This is a recording of system audio, possibly containing human speech.",
+            vad_parameters=dict(min_silence_duration_ms=300, speech_pad_ms=120),
+            condition_on_previous_text=False,
+            initial_prompt=optimized_jargon,
         )
 
-        print(" Raw segments:")
-        texts = []
-        for seg in segments:
-            print(seg.text)
-            if seg.text.strip():
-                texts.append(seg.text.strip())
-
+        texts = [seg.text.strip() for seg in segments if seg.text and seg.text.strip()]
         transcript = " ".join(texts).strip()
 
-        # âœ… DO NOT treat as error anymore
         if not transcript:
-            return {
-                "status": "success",
-                "transcript": "[Audio detected but no clear speech recognized]"
-            }
+            return {"status": "success", "transcript": "[Audio detected but no clear speech recognized]"}
 
         print(f"Transcript: {transcript}")
-
-        return {
-            "status": "success",
-            "transcript": transcript
-        }
+        return {"status": "success", "transcript": transcript}
 
     except Exception as e:
         print(f"System Audio Error: {e}")
-        return {
-            "status": "error",
-            "transcript": str(e)
-        }
+        return {"status": "error", "transcript": str(e)}
 
     finally:
         if temp_audio_path and os.path.exists(temp_audio_path):

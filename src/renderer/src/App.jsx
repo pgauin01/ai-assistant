@@ -10,7 +10,7 @@ const SLASH_COMMANDS = [
   { id: 'create', icon: '✨', label: 'Create', desc: 'Write a production-ready program' },
   { id: 'clear', icon: '🗑️', label: 'Clear', desc: 'Clear the chat history' },
   { id: 'career', icon: '💼', label: 'Career', desc: 'Ask about my projects & experience' },
-  // { id: 'system', icon: '🎧', label: 'Wiretap', desc: 'Listen to system audio (10s)' },
+  { id: 'system', icon: '🎧', label: 'Wiretap', desc: 'Listen to system audio (10s)' },
   // --- NEW: Z-Macro Commands for fast testing ---
   { id: 'z-hustlebot', icon: '🤖', label: 'HustleBot', desc: 'tell me about hustle bot' },
   { id: 'z-shadowos', icon: '🧠', label: 'Shadow OS', desc: 'tell me about shadow os' },
