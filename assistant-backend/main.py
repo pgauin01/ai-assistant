@@ -356,6 +356,12 @@ def transcribe_audio_file(temp_audio_path: str) -> str:
 
     return " ".join(segment.text.strip() for segment in segments).strip()
 
+# --- Add this block ---
+@app.get("/health")
+async def health_check():
+    """Endpoint for the Electron frontend to verify the backend is running."""
+    return {"status": "ok", "message": "Backend is ready!"}
+# ----------------------
 
 @app.post("/agent/execute")
 async def execute_command(command: UserCommand):

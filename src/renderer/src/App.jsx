@@ -68,10 +68,40 @@ function App() {
   const [isLiveTranscribing, setIsLiveTranscribing] = useState(false)
   const isLiveTranscribingRef = useRef(false)
   const liveWsRef = useRef(null)
+  const [isBackendReady, setIsBackendReady] = useState(false)
 
   useEffect(() => {
     isLiveTranscribingRef.current = isLiveTranscribing
   }, [isLiveTranscribing])
+
+  useEffect(() => {
+    let pollInterval
+
+    const checkBackendHealth = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:8000/health')
+        if (response.ok) {
+          console.log('Backend is online!')
+          setIsBackendReady(true)
+          // Stop polling once we get a successful response
+          clearInterval(pollInterval)
+        }
+      } catch (error) {
+        // Expected behavior while the Python server is still booting up
+        console.log('Waiting for backend to start...')
+      }
+    }
+
+    // Poll every 1 second (1000ms) until connected
+    if (!isBackendReady) {
+      pollInterval = setInterval(checkBackendHealth, 1000)
+
+      // Fire it once immediately so we don't wait a full second for the first check
+      checkBackendHealth()
+    }
+
+    return () => clearInterval(pollInterval) // Cleanup on unmount
+  }, [isBackendReady])
 
   const showMicToast = (message, duration = 1200) => {
     if (micToastTimeoutRef.current) {
@@ -879,6 +909,35 @@ function App() {
 
         {/* Input Container */}
         <div className="relative w-[700px] mt-2">
+          {/* --- NEW: Backend Booting Banner --- */}
+          {!isBackendReady && (
+            <div className="absolute -top-12 left-0 w-full flex justify-center z-50 animate-pulse">
+              <div className="bg-yellow-500/20 border border-yellow-500/50 text-yellow-200 px-4 py-2 rounded-lg text-sm shadow-lg backdrop-blur-md flex items-center gap-2">
+                <svg
+                  className="animate-spin h-4 w-4 text-yellow-200"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                Starting local AI Engine...
+              </div>
+            </div>
+          )}
+          {/* ----------------------------------- */}
           <button
             type="button"
             onPointerDown={startRecording}
@@ -951,37 +1010,39 @@ function App() {
                 setInputText(val)
                 setInput(val)
 
-                // --- NEW: Slash Menu Listener ---
-                // Checks if the user is currently typing a slash command at the end
                 const match = val.match(/\/([a-zA-Z]*)$/)
                 if (match) {
                   setShowSlashMenu(true)
                   setSlashFilter(match[1].toLowerCase())
-                  setSlashIndex(0) // Reset selection to top
+                  setSlashIndex(0)
                 } else {
                   setShowSlashMenu(false)
                 }
               }
             }}
             onKeyDown={handleKeyDown}
-            disabled={isThinking || isRecording || isListening}
-            // STOP the drag if you click inside the input box
+            // --- NEW: Disable input if backend is not ready ---
+            disabled={!isBackendReady || isThinking || isRecording || isListening}
             onPointerDown={(e) => e.stopPropagation()}
+            // --- NEW: Update placeholder to show connecting status ---
             placeholder={
-              isLiveTranscribing
-                ? '🔴 Live System Capturing... (Ctrl+Q to stop)'
-                : isListening
-                  ? 'Listening to system audio...'
-                  : isRecording
-                    ? 'Recording... release to send'
-                    : isThinking
-                      ? 'Thinking...'
-                      : 'Ask your assistant...'
+              !isBackendReady
+                ? 'Connecting to AI Engine...'
+                : isLiveTranscribing
+                  ? '🔴 Live System Capturing... (Ctrl+Q to stop)'
+                  : isListening
+                    ? 'Listening to system audio...'
+                    : isRecording
+                      ? 'Recording... release to send'
+                      : isThinking
+                        ? 'Thinking...'
+                        : 'Ask your assistant...'
             }
+            // --- NEW: Update styling so it looks disabled while booting ---
             className={`w-full p-4 pl-14 pr-20 text-xl rounded-2xl shadow-2xl backdrop-blur-md outline-none border transition-all font-sans cursor-text
               ${
-                isThinking || isRecording || isListening || isLiveTranscribing
-                  ? 'bg-gray-800/80 text-gray-400 border-blue-500/50 animate-pulse'
+                !isBackendReady || isThinking || isRecording || isListening || isLiveTranscribing
+                  ? 'bg-gray-800/80 text-gray-400 border-blue-500/50 cursor-not-allowed opacity-80'
                   : 'bg-gray-900/60 text-gray-100 border-gray-700 focus:border-blue-500 placeholder-gray-500'
               }`}
           />
