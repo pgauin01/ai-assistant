@@ -10,7 +10,7 @@ const SLASH_COMMANDS = [
   { id: 'create', icon: '✨', label: 'Create', desc: 'Write a production-ready program' },
   { id: 'clear', icon: '🗑️', label: 'Clear', desc: 'Clear the chat history' },
   { id: 'career', icon: '💼', label: 'Career', desc: 'Ask about my projects & experience' },
-  { id: 'system', icon: '🎧', label: 'Wiretap', desc: 'Listen to system audio (10s)' },
+  // { id: 'system', icon: '🎧', label: 'Wiretap', desc: 'Listen to system audio (10s)' },
   // --- NEW: Z-Macro Commands for fast testing ---
   { id: 'z-hustlebot', icon: '🤖', label: 'HustleBot', desc: 'tell me about hustle bot' },
   { id: 'z-shadowos', icon: '🧠', label: 'Shadow OS', desc: 'tell me about shadow os' },
@@ -209,14 +209,16 @@ function App() {
       ws.onmessage = (e) => {
         const data = JSON.parse(e.data)
         if (data.text) {
-          // --- THE FIX: Stream the text directly into the last message bubble ---
           setMessages((prev) => {
             const newMessages = [...prev]
             const lastIndex = newMessages.length - 1
 
-            // Append the new words to the existing transcript bubble
             if (lastIndex >= 0) {
-              newMessages[lastIndex].content += ' ' + data.text
+              // --- THE FIX: Create a brand new object instead of mutating the old one ---
+              newMessages[lastIndex] = {
+                ...newMessages[lastIndex],
+                content: newMessages[lastIndex].content + ' ' + data.text
+              }
             }
             return newMessages
           })
