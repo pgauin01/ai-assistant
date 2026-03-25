@@ -42,6 +42,7 @@ import moondream as md
 import sys
 import threading
 from fastapi.responses import JSONResponse, StreamingResponse
+from contextlib import asynccontextmanager
 
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # <--- ADD THIS FIX
@@ -202,23 +203,23 @@ np.fromstring = _safe_fromstring
 # ---------------------------------------------
 
 
-app = FastAPI()
 
-@app.on_event("startup")
-def warmup_ai_models():
-    def load_whisper():
-        global whisper_model
-        if WhisperModel is not None and whisper_model is None:
-            print("[WARMUP] Pre-loading Whisper 'base.en' model to CPU in background...")
-            try:
-                # IMPORTANT: Keep the cpu_threads=4 fix here too!
-                whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=4)
-                print("[WARMUP] Whisper model is ready for instant voice commands!")
-            except Exception as e:
-                print(f"[WARMUP FAIL] Could not load Whisper: {e}")
+# --- NEW LIFESPAN MANAGER ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global whisper_model
+    print("[WARMUP] Pre-loading Whisper 'base.en' model to CPU in background...")
+    try:
+        if whisper_model is None and WhisperModel is not None:
+            whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=4)
+    except Exception as e:
+        print(f"Failed to pre-load Whisper: {e}")
+    
+    yield # This tells FastAPI the app is ready to run!
 
-    # Fire and forget: Runs the heavy loading on a separate thread
-    threading.Thread(target=load_whisper, daemon=True).start()
+
+app = FastAPI(lifespan=lifespan)
+
 
 # --- NEW: GLOBAL CRASH CATCHER ---
 @app.exception_handler(Exception)
@@ -992,41 +993,40 @@ async def live_transcribe(websocket: WebSocket):
     last_text = ""
 
     def squash_stutters(text: str) -> str:
-        """Removes duplicated phrases and overlapping text loops."""
         if not text:
             return ""
-
-        # 1. Clean up weird spacing and punctuation loops
-        text = re.sub(r'\s+', ' ', text).strip()
-        text = re.sub(r'([.!?])\s*\1+', r'\1', text) 
+        text = text.strip()
         
-        # 2. Split into logical sentences/phrases
+        # 1. Check exact halves (ignoring punctuation and spaces)
+        # Fixes: "Hello there. Hello there" (missing period)
+        mid = len(text) // 2
+        half1 = text[:mid].strip()
+        half2 = text[mid:].strip()
+        
+        # Strip all non-alphanumeric chars for a bulletproof comparison
+        clean1 = re.sub(r'[^\w\s]', '', half1).lower()
+        clean2 = re.sub(r'[^\w\s]', '', half2).lower()
+        
+        if clean1 == clean2:
+            return half1 # Return the first half (which usually has the correct punctuation)
+
+        # 2. Advanced Sentence Deduplication
         phrases = [p.strip() for p in re.split(r'(?<=[.!?])\s+', text) if p.strip()]
-        
-        if not phrases:
-            return text
-
-        # 3. Aggressive deduplication
         deduped = []
         for phrase in phrases:
-            # Check if this phrase is exactly the same as the LAST phrase we added
-            if deduped and phrase.lower() == deduped[-1].lower():
-                continue # Skip it!
-            
-            # Check if this phrase is a SUBSTRING of the last phrase (or vice versa)
-            if deduped and (phrase.lower() in deduped[-1].lower() or deduped[-1].lower() in phrase.lower()):
-                # Keep the longer one
-                if len(phrase) > len(deduped[-1]):
-                    deduped[-1] = phrase
-                continue
-            
+            clean_phrase = re.sub(r'[^\w\s]', '', phrase).lower()
+            if deduped:
+                clean_last = re.sub(r'[^\w\s]', '', deduped[-1]).lower()
+                # Skip if it's the exact same phrase
+                if clean_phrase == clean_last:
+                    continue
+                # Skip if it's a slightly shorter overlapping phrase
+                if clean_phrase in clean_last or clean_last in clean_phrase:
+                    if len(phrase) > len(deduped[-1]):
+                        deduped[-1] = phrase
+                    continue
             deduped.append(phrase)
-
-        # 4. Check for the "A B A B" pattern
-        mid = len(deduped) // 2
-        if mid > 0 and deduped[:mid] == deduped[mid:]:
-            deduped = deduped[:mid]
-
+            
         return " ".join(deduped)
 
     try:
@@ -1043,32 +1043,35 @@ async def live_transcribe(websocket: WebSocket):
                     language="en",
                     beam_size=5,
                     vad_filter=True,
-                    vad_parameters=dict(min_silence_duration_ms=200, speech_pad_ms=50),
+                    vad_parameters=dict(min_silence_duration_ms=300, speech_pad_ms=50),
                     condition_on_previous_text=False,
                     temperature=0.0,
-                    compression_ratio_threshold=1.5,
-                    no_speech_threshold=0.5
+                    compression_ratio_threshold=1.5
                 )
                 
                 texts = []
                 for seg in segments:
+                    # Throw away pure static/noise
                     if getattr(seg, 'no_speech_prob', 0.0) < 0.6:
                         texts.append(seg.text.strip())
                         
                 raw_text = " ".join(texts).strip()
                 
-                # Apply the new, aggressive deduplication filter
+                # --- RUN THE INDESTRUCTIBLE FILTER ---
                 clean_text = squash_stutters(raw_text)
 
-                # Only send if clean, not duplicate of the LAST chunk, and actually contains a real word
+                # Only send if clean, not duplicate of the LAST chunk, and contains real words
                 if clean_text and clean_text != last_text and len(clean_text) > 2:
                     
-                    # Prevent sending a chunk that is just a slight overlap of the previous chunk
-                    if last_text and (clean_text in last_text or last_text in clean_text):
-                        if len(clean_text) > len(last_text):
-                            last_text = clean_text
-                            await websocket.send_json({"text": clean_text})
-                        continue
+                    # Prevent sending a chunk that is just a slight overlap of the previous message
+                    if last_text:
+                        clean_last = re.sub(r'[^\w\s]', '', last_text).lower()
+                        clean_current = re.sub(r'[^\w\s]', '', clean_text).lower()
+                        if clean_current in clean_last or clean_last in clean_current:
+                            if len(clean_text) > len(last_text):
+                                last_text = clean_text
+                                await websocket.send_json({"text": clean_text})
+                            continue
 
                     last_text = clean_text 
                     await websocket.send_json({"text": clean_text})
