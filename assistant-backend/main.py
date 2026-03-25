@@ -741,7 +741,7 @@ def extract_text_from_image(image: Image.Image) -> str:
     # Convert to grayscale
     image = image.convert("L")
 
-    # ðŸ”¥ Increase contrast (huge improvement)
+    # Increase contrast (huge improvement)
     import cv2
     import numpy as np
 

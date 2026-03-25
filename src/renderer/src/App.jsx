@@ -300,14 +300,20 @@ function App() {
         const { done, value } = await reader.read()
         if (done) break
 
-        // Decode the incoming byte chunk and append it
         const textChunk = decoder.decode(value, { stream: true })
         assistantReply += textChunk
 
-        // Dynamically update the LAST message in the array
+        // --- THE FIX: Create a brand new message object ---
         setMessages((prev) => {
           const newMessages = [...prev]
-          newMessages[newMessages.length - 1].content = assistantReply
+          const lastIndex = newMessages.length - 1
+
+          if (lastIndex >= 0) {
+            newMessages[lastIndex] = {
+              ...newMessages[lastIndex],
+              content: assistantReply
+            }
+          }
           return newMessages
         })
       }
@@ -798,9 +804,17 @@ function App() {
         const textChunk = decoder.decode(value, { stream: true })
         assistantReply += textChunk
 
+        // --- THE FIX: Create a brand new message object ---
         setMessages((prev) => {
           const newMessages = [...prev]
-          newMessages[newMessages.length - 1].content = assistantReply
+          const lastIndex = newMessages.length - 1
+
+          if (lastIndex >= 0) {
+            newMessages[lastIndex] = {
+              ...newMessages[lastIndex],
+              content: assistantReply
+            }
+          }
           return newMessages
         })
       }
