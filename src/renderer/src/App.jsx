@@ -262,6 +262,42 @@ function App() {
     }
   }
 
+  const appendLastSentences = (count) => {
+    if (messages.length === 0) return
+    const lastMsg = messages[messages.length - 1]
+
+    // Make sure we are extracting from the live audio bubble
+    if (!lastMsg.content.includes('[Live System Audio]')) return
+
+    // Strip the prefix out
+    const rawText = lastMsg.content.replace('🎧 **[Live System Audio]:**', '').trim()
+
+    // This matches sentences ending in punctuation OR the unpunctuated fragment at the end!
+    const sentences = rawText.match(/[^.!?]+[.!?]+|[^.!?]+$/g)
+
+    let textToAppend = ''
+    if (!sentences) {
+      // If there's no punctuation yet, just grab whatever words are there
+      textToAppend = rawText
+    } else {
+      // Grab the last X sentences, trim extra spaces, and join them
+      textToAppend = sentences
+        .slice(-count)
+        .map((s) => s.trim())
+        .join(' ')
+    }
+
+    if (textToAppend) {
+      // --- THE FIX: Replace the input instead of appending ---
+      setInput(textToAppend + ' ')
+      setInputText(textToAppend + ' ')
+      // -------------------------------------------------------
+
+      // Auto-focus the input box so you can keep typing immediately
+      inputRef.current?.focus()
+    }
+  }
+
   const closeOverlay = () => {
     setInput('')
     window.api.hideOverlay()
@@ -498,7 +534,7 @@ function App() {
     setShowSlashMenu(false)
 
     // --- NEW: Handle standalone commands that don't need text prompts ---
-    if (commandId === 'clear') {
+    if (commandId === 'clear' || commandId === 'cl') {
       setMessages([])
       setInput('')
       return
@@ -586,7 +622,12 @@ function App() {
     // Locate this section in handleKeyDown (around line 419)
     if (e.key === 'Enter' && !isThinking && !isRecording && !showSlashMenu) {
       // ADD THIS FIX: Check if the user is trying to clear the app even during a vision edit
-      if (pendingCommand === '/clear' || input.trim() === '/clear') {
+      if (
+        pendingCommand === '/clear' ||
+        input.trim() === '/clear' ||
+        pendingCommand === '/cl' ||
+        input.trim() === '/cl'
+      ) {
         setPendingCommand(null) // Kill the vision state
         setMessages([]) // Clear the messages
         setInput('') // Reset input
@@ -853,7 +894,7 @@ function App() {
           {messages.map((message, idx) => {
             if (message.role === 'user') {
               return (
-                <div key={`message-${idx}`} className="w-full flex justify-end mb-3">
+                <div key={`message-${idx}`} className="w-full flex justify-end mb-3 cursor-default">
                   <div className="max-w-[78%] bg-blue-500 text-white px-4 py-3 rounded-[24px] rounded-br-md text-base leading-relaxed shadow-lg">
                     {message.content}
                   </div>
@@ -865,7 +906,7 @@ function App() {
               <div
                 key={`message-${idx}`}
                 // className="w-full mb-4 p-5 bg-gray-900/95 text-gray-100 rounded-2xl shadow-2xl backdrop-blur-xl border border-gray-700 cursor-text"
-                className="w-full mb-4 p-5 bg-gray-900/60 text-gray-100 rounded-2xl shadow-2xl backdrop-blur-xl border border-gray-700 cursor-text"
+                className="w-full mb-4 p-5 bg-gray-900/60 text-gray-100 rounded-2xl shadow-2xl backdrop-blur-xl border border-gray-700 cursor-default"
               >
                 <ReactMarkdown
                   components={{
@@ -920,7 +961,42 @@ function App() {
             </div>
           )}
         </div>
-
+        {/* --- ADD THIS NEW BLOCK FOR THE LIVE TRANSCRIPTION BUTTONS --- */}
+        {(isLiveTranscribing ||
+          messages.some((msg) => msg.content?.includes('[Live System Audio]'))) && (
+          <div className="w-[700px] mt-2 flex justify-end gap-3 animate-fade-in-up">
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                appendLastSentences(1)
+              }}
+              className="px-4 py-1.5 text-xs font-bold text-blue-200 bg-blue-900/40 border border-blue-400/40 rounded-lg hover:bg-blue-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
+            >
+              + Add Last Sentence
+            </button>
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                appendLastSentences(2)
+              }}
+              className="px-4 py-1.5 text-xs font-bold text-purple-200 bg-purple-900/40 border border-purple-400/40 rounded-lg hover:bg-purple-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
+            >
+              + Add Last 2 Sentences
+            </button>
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                appendLastSentences(3)
+              }}
+              className="px-4 py-1.5 text-xs font-bold text-purple-200 bg-purple-900/40 border border-purple-400/40 rounded-lg hover:bg-purple-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
+            >
+              + Add Last 3 Sentences
+            </button>
+          </div>
+        )}
         {/* Input Container */}
         <div className="relative w-[700px] mt-2">
           {/* --- NEW: Backend Booting Banner --- */}
