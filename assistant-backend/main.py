@@ -127,19 +127,47 @@ except Exception as e:
 OLLAMA_BASE_URL = "http://localhost:11434"
 OLLAMA_MODEL = "qwen2.5-coder:3b"
 
+# testing purposes only - this class creates a full-screen transparent overlay that lets you draw a box to capture a screenshot region. You can then run OCR on that region to extract text from images of code, error messages, etc.
+import ctypes
+import tkinter as tk
 
 class SnippingTool:
     def __init__(self):
         self.root = tk.Tk()
-        # Make the window semi-transparent and fullscreen
-        self.root.attributes('-alpha', 0.3)
-        self.root.attributes('-fullscreen', True)
-        self.root.attributes('-topmost', True) # Keep on top of everything
-        self.root.config(cursor="cross")
         
-        self.canvas = tk.Canvas(self.root, cursor="cross", bg="black")
+        # Hide from taskbar
+        self.root.overrideredirect(True)
+        
+        # 1. NO DIMMING: Pure stealth background (0.01 alpha)
+        self.root.attributes('-alpha', 0.01) 
+        self.root.attributes('-topmost', True) 
+        self.root.config(cursor="arrow")
+        
+        # Stretch across the whole screen
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        self.root.geometry(f"{screen_width}x{screen_height}+0+0")
+        
+        # Force the window to render to get the HWND
+        self.root.update_idletasks()
+        
+        # 🛑 HIDE FROM SCREEN SHARE 🛑
+        try:
+            hwnd = int(self.root.wm_frame(), 16)
+            ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, 0x00000011)
+        except Exception as e:
+            print(f"[Stealth] Failed to hide from screen share: {e}")
+
+        # 2. NO RED BORDER: highlightthickness set back to 0
+        self.canvas = tk.Canvas(
+            self.root, 
+            cursor="arrow", 
+            bg="black", 
+            highlightthickness=0         
+        )
         self.canvas.pack(fill="both", expand=True)
         
+        # Bind the mouse events
         self.canvas.bind("<ButtonPress-1>", self.on_press)
         self.canvas.bind("<B1-Motion>", self.on_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_release)
@@ -152,25 +180,79 @@ class SnippingTool:
     def on_press(self, event):
         self.start_x = self.canvas.canvasx(event.x)
         self.start_y = self.canvas.canvasy(event.y)
-        # Create the red bounding box
+        
+        # 3. THIN GREEN BAR: outline='#00ff00', width=1
         self.rect = self.canvas.create_rectangle(
-            self.start_x, self.start_y, 1, 1, outline='red', width=3, fill="black"
+            self.start_x, self.start_y, 1, 1, outline="#3cff00", width=20, fill=""
         )
 
     def on_drag(self, event):
         curX, curY = (event.x, event.y)
-        # Update the box size as you drag
+        # Update the box coordinates as you drag
         self.canvas.coords(self.rect, self.start_x, self.start_y, curX, curY)
 
     def on_release(self, event):
-        # Save the coordinates and destroy the overlay
+        # Save the coordinates
         self.bbox = (
             min(self.start_x, event.x), 
             min(self.start_y, event.y), 
             max(self.start_x, event.x), 
             max(self.start_y, event.y)
         )
+        # Destroy the overlay immediately
         self.root.destroy()
+
+
+# class SnippingTool:
+#     def __init__(self):
+#         self.root = tk.Tk()
+        
+#         # 1. Hide from taskbar
+#         self.root.overrideredirect(True)
+        
+#         # 2. Make it completely stealth
+#         self.root.attributes('-alpha', 0.01)
+#         self.root.attributes('-topmost', True) 
+#         self.root.config(cursor="arrow")
+        
+#         # 3. THE FIX: Manually stretch it across the entire screen instead of using -fullscreen
+#         screen_width = self.root.winfo_screenwidth()
+#         screen_height = self.root.winfo_screenheight()
+#         self.root.geometry(f"{screen_width}x{screen_height}+0+0")
+        
+#         # 4. Standard canvas setup
+#         self.canvas = tk.Canvas(self.root, cursor="arrow", bg="black", highlightthickness=0)
+#         self.canvas.pack(fill="both", expand=True)
+        
+#         self.canvas.bind("<ButtonPress-1>", self.on_press)
+#         self.canvas.bind("<B1-Motion>", self.on_drag)
+#         self.canvas.bind("<ButtonRelease-1>", self.on_release)
+        
+#         self.start_x = None
+#         self.start_y = None
+#         self.rect = None
+#         self.bbox = None
+
+#     def on_press(self, event):
+#         self.start_x = self.canvas.canvasx(event.x)
+#         self.start_y = self.canvas.canvasy(event.y)
+        
+#         self.rect = self.canvas.create_rectangle(
+#             self.start_x, self.start_y, 1, 1, outline='', width=0, fill=""
+#         )
+
+#     def on_drag(self, event):
+#         curX, curY = (event.x, event.y)
+#         self.canvas.coords(self.rect, self.start_x, self.start_y, curX, curY)
+
+#     def on_release(self, event):
+#         self.bbox = (
+#             min(self.start_x, event.x), 
+#             min(self.start_y, event.y), 
+#             max(self.start_x, event.x), 
+#             max(self.start_y, event.y)
+#         )
+#         self.root.destroy()
 
 def get_screen_snip():
     """Opens the snipping overlay and returns the cropped Image."""
@@ -432,7 +514,15 @@ async def execute_command(command: UserCommand):
         except Exception as error:
             yield f"\n\nError generating response: {error}"
 
-    return StreamingResponse(generate_response(), media_type="text/plain")
+    return StreamingResponse(
+        generate_response(), 
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 
 @app.post("/transcribe")
@@ -873,8 +963,16 @@ async def execute_vision_command(request: ChatRequest):
                 instruction = last_msg
 
         # 2. STEALTH MODE: Instantly grab the primary monitor invisibly
-        print(f"Stealth capturing full screen for {mode.upper()} mode...")
-        screenshot = ImageGrab.grab()
+        # print(f"Stealth capturing full screen for {mode.upper()} mode...")
+        # screenshot = ImageGrab.grab()
+        # 2. CAPTURE MODE: Use Snipping Tool for Fix/Explain, Full Screen for Create
+        # if mode in ["fix"]:
+        if mode in ["fix", "explain"]:
+            print(f"Triggering Snipping Tool for {mode.upper()} mode...")
+            screenshot = get_screen_snip()
+        else:
+            print(f"Stealth capturing full screen for {mode.upper()} mode...")
+            screenshot = ImageGrab.grab()
 
         # 3. Formulate the "Sniper" Prompt
         if mode == "create":
@@ -983,7 +1081,15 @@ async def confirm_and_execute(data: dict):
         except Exception as e:
             yield f"\n\nError generating response: {e}"
 
-    return StreamingResponse(generate_response(), media_type="text/plain")
+    return StreamingResponse(
+        generate_response(), 
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 @app.websocket("/ws/live-transcribe")
 async def live_transcribe(websocket: WebSocket):
