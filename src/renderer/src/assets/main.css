@@ -11,3 +11,6 @@ html,
   height: 100vh;
   overflow: hidden;
 }
+* {
+  cursor: default !important;
+}

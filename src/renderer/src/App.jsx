@@ -1068,7 +1068,7 @@ function App() {
           </button>
           {/* --- NEW: The Slash Command Dropdown --- */}
           {showSlashMenu && (
-            <div className="absolute top-full left-4 mb-4 w-72 bg-gray-800/60 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl overflow-hidden flex flex-col font-sans animate-fade-in-up z-50">
+            <div className="absolute bottom-full left-4 mb-3 max-h-[350px] overflow-y-auto w-72 bg-gray-800/60 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl flex flex-col font-sans animate-fade-in-up z-50 scrollbar-thin scrollbar-thumb-gray-500">
               {SLASH_COMMANDS.filter((c) => c.id.startsWith(slashFilter)).map((cmd, idx) => (
                 <button
                   key={cmd.id}
