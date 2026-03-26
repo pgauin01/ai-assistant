@@ -525,7 +525,6 @@ function App() {
       if (recorder.state !== 'inactive') {
         recorder.stop()
       }
-      // showMicToast('Recording stopped')
       stopRecordingTimeoutRef.current = null
     }, 400)
   }
@@ -590,6 +589,25 @@ function App() {
 
   const handleKeyDown = async (e) => {
     // --- NEW: Keyboard navigation for the Slash Menu ---
+    if (e.key === 'Escape') {
+      if (showSlashMenu) {
+        setPendingCommand(null)
+        setInput('')
+        setShowSlashMenu(false)
+        return
+      }
+      if (showVisionMenu) {
+        setShowVisionMenu(false)
+        return
+      }
+      // If no menus are open and the input is empty, close the whole app!
+      if (!input.trim() && !pendingCommand) {
+        closeOverlay()
+        return
+      }
+    }
+
+    // --- Keyboard navigation for the Slash Menu ---
     if (showSlashMenu) {
       const filtered = SLASH_COMMANDS.filter((c) => c.id.startsWith(slashFilter))
 
@@ -608,12 +626,6 @@ function App() {
         if (filtered[slashIndex]) {
           await executeSlashCommand(filtered[slashIndex].id)
         }
-        return
-      }
-      if (e.key === 'Escape') {
-        setPendingCommand(null)
-        setInput('')
-        setShowSlashMenu(false)
         return
       }
     }
@@ -1056,7 +1068,7 @@ function App() {
           </button>
           {/* --- NEW: The Slash Command Dropdown --- */}
           {showSlashMenu && (
-            <div className="absolute top-full left-4 mt-3 w-72 bg-gray-800/60 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl overflow-hidden flex flex-col font-sans animate-fade-in-up z-50">
+            <div className="absolute top-full left-4 mb-4 w-72 bg-gray-800/60 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl overflow-hidden flex flex-col font-sans animate-fade-in-up z-50">
               {SLASH_COMMANDS.filter((c) => c.id.startsWith(slashFilter)).map((cmd, idx) => (
                 <button
                   key={cmd.id}
