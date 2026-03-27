@@ -243,13 +243,25 @@ function App() {
             const newMessages = [...prev]
             const lastIndex = newMessages.length - 1
 
-            if (lastIndex >= 0) {
-              // --- THE FIX: Create a brand new object instead of mutating the old one ---
+            // --- THE FIX: Check ONLY the very last message ---
+            // If the absolute last message is our active audio block, append to it.
+            if (
+              lastIndex >= 0 &&
+              newMessages[lastIndex].content?.includes('🎧 **[Live System Audio]:**')
+            ) {
               newMessages[lastIndex] = {
                 ...newMessages[lastIndex],
                 content: newMessages[lastIndex].content + ' ' + data.text
               }
+            } else {
+              // If the last message is an AI reply (or anything else),
+              // spawn a BRAND NEW audio block at the bottom of the chat!
+              newMessages.push({
+                role: 'user',
+                content: '🎧 **[Live System Audio]:** ' + data.text
+              })
             }
+
             return newMessages
           })
         }
@@ -296,6 +308,57 @@ function App() {
       // Auto-focus the input box so you can keep typing immediately
       inputRef.current?.focus()
     }
+  }
+
+  const handleContextualAction = async (actionType) => {
+    // --- THE FIX: Reverse the array to find the LATEST live audio message ---
+    const liveMsg = [...messages].reverse().find((m) => m.content?.includes('[Live System Audio]'))
+
+    if (!liveMsg) {
+      showMicToast('No live audio context found.')
+      return
+    }
+
+    // 2. Extract the raw text
+    const rawText = liveMsg.content.replace('🎧 **[Live System Audio]:**', '').trim()
+    if (!rawText) {
+      showMicToast('Transcript is empty.')
+      return
+    }
+
+    // 3. Define the prompts based on the action
+    let displayCommand = ''
+    let augmentedPrompt = ''
+
+    switch (actionType) {
+      case 'answer':
+        displayCommand = 'What should I answer?'
+        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]\nBased on the following live conversation, suggest a strong, concise response I can say right now. \n\nCRITICAL: If the conversation is about programming, coding interviews, or software architecture, you MUST include a brief, practical code snippet demonstrating the concept.\n\nLive Conversation:\n"${rawText}"`
+        break
+      // --- ADD THIS NEW CASE ---
+      case 'detailed':
+        displayCommand = 'Detailed Answer'
+        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]\nAnalyze the following live conversation and identify the core technical question or concept being discussed. Provide a HIGHLY DETAILED, comprehensive answer to that implicit question. \n\nCRITICAL: For programming topics, you MUST explain the under-the-hood mechanics (e.g., Event Loop, Web APIs, memory, time/space complexity) and provide robust code examples.\n\nLive Conversation:\n"${rawText}"`
+        break
+      // -------------------------
+      case 'shorten':
+        displayCommand = 'Shorten response'
+        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]\nPlease summarize and shorten the following live conversation into a quick, digestible format. If it's a technical topic, include a 1-2 line code example.\n\nLive Conversation:\n"${rawText}"`
+        break
+      case 'recap':
+        displayCommand = 'Recap conversation'
+        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]\nProvide a clear, bulleted recap of the key points discussed in this live conversation so far. If technical concepts were discussed, pair them with short code blocks.\n\nLive Conversation:\n"${rawText}"`
+        break
+      case 'followup':
+        displayCommand = 'Suggest follow-up questions'
+        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]\nSuggest 3 insightful, senior-level follow-up questions I can ask based on the context of this live conversation. Make them highly technical if the context is coding.\n\nLive Conversation:\n"${rawText}"`
+        break
+      default:
+        return
+    }
+
+    // 4. Send the command to the AI
+    await sendTextMessage(displayCommand, augmentedPrompt)
   }
 
   const closeOverlay = () => {
@@ -998,7 +1061,7 @@ function App() {
           )}
         </div>
         {/* --- ADD THIS NEW BLOCK FOR THE LIVE TRANSCRIPTION BUTTONS --- */}
-        {(isLiveTranscribing ||
+        {/* {(isLiveTranscribing ||
           messages.some((msg) => msg.content?.includes('[Live System Audio]'))) && (
           <div className="w-[700px] mt-2 flex justify-end gap-3 animate-fade-in-up">
             <button
@@ -1030,6 +1093,65 @@ function App() {
               className="px-4 py-1.5 text-xs font-bold text-purple-200 bg-purple-900/40 border border-purple-400/40 rounded-lg hover:bg-purple-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
             >
               + Add Last 3 Sentences
+            </button>
+          </div>
+        )} */}
+        {/* --- ADD THIS NEW BLOCK FOR THE LIVE TRANSCRIPTION BUTTONS --- */}
+        {/* --- ADD THIS NEW BLOCK FOR THE LIVE TRANSCRIPTION BUTTONS --- */}
+        {(isLiveTranscribing ||
+          messages.some((msg) => msg.content?.includes('[Live System Audio]'))) && (
+          <div className="w-[700px] mt-2 flex flex-wrap justify-end gap-2 animate-fade-in-up">
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleContextualAction('answer')
+              }}
+              className="px-3 py-1.5 text-xs font-bold text-green-200 bg-green-900/40 border border-green-400/40 rounded-lg hover:bg-green-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
+            >
+              💡 Quick Answer
+            </button>
+            {/* --- NEW DETAILED ANSWER BUTTON --- */}
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleContextualAction('detailed')
+              }}
+              className="px-3 py-1.5 text-xs font-bold text-cyan-200 bg-cyan-900/40 border border-cyan-400/40 rounded-lg hover:bg-cyan-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
+            >
+              🧠 Detailed Answer
+            </button>
+            {/* ---------------------------------- */}
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleContextualAction('shorten')
+              }}
+              className="px-3 py-1.5 text-xs font-bold text-blue-200 bg-blue-900/40 border border-blue-400/40 rounded-lg hover:bg-blue-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
+            >
+              ✂️ Shorten
+            </button>
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleContextualAction('recap')
+              }}
+              className="px-3 py-1.5 text-xs font-bold text-purple-200 bg-purple-900/40 border border-purple-400/40 rounded-lg hover:bg-purple-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
+            >
+              📝 Recap
+            </button>
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleContextualAction('followup')
+              }}
+              className="px-3 py-1.5 text-xs font-bold text-orange-200 bg-orange-900/40 border border-orange-400/40 rounded-lg hover:bg-orange-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
+            >
+              ❓ Follow-up
             </button>
           </div>
         )}
@@ -1090,7 +1212,7 @@ function App() {
                 ? 'bg-red-500/25 text-red-200 border-red-300/70'
                 : 'bg-blue-500/15 text-blue-200 border-blue-300/60 hover:bg-blue-500/25'
             } ${isThinking ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-            title="Hold to talk"
+            // title="Hold to talk"
           >
             <svg
               viewBox="0 0 24 24"
@@ -1195,28 +1317,22 @@ function App() {
           >
             X
           </button>
-          {/* <button
-            onClick={captureSystemAudio}
-            disabled={isThinking || isRecording}
-            onPointerDown={(e) => e.stopPropagation()}
-            className={`absolute right-12 top-1/2 -translate-y-1/2 z-20 p-2 text-gray-500 hover:text-purple-400 transition-colors ${
-              isThinking || isRecording ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-            }`}
-            title="Wiretap System Audio (10s)"
+          <button
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              toggleLiveTranscription()
+            }}
+            disabled={isThinking || isRecording || !isBackendReady}
+            className={`absolute right-12 top-1/2 -translate-y-1/2 z-20 p-2 transition-all duration-300 ${
+              isLiveTranscribing
+                ? 'text-red-400 animate-pulse drop-shadow-[0_0_8px_rgba(248,113,113,0.8)]'
+                : 'text-gray-500 hover:text-cyan-400'
+            } ${isThinking || isRecording ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            // title={isLiveTranscribing ? 'Stop Ambient Listening' : 'Start Ambient Listening'}
           >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              className="w-6 h-6"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
-              <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
-            </svg>
-          </button> */}
+            {isLiveTranscribing ? '🛑' : '🎧'}
+          </button>
           <div className="absolute right-20 top-1/2 -translate-y-1/2">
             {showVisionMenu && (
               <div className="absolute bottom-full right-0 mb-4 w-32 bg-gray-800/60 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl overflow-hidden flex flex-col font-sans animate-fade-in-up">
@@ -1263,7 +1379,7 @@ function App() {
               onClick={() => setShowVisionMenu(!showVisionMenu)}
               onPointerDown={(e) => e.stopPropagation()}
               className={`text-gray-500 hover:text-green-400 transition-colors p-2 cursor-pointer font-bold ${showVisionMenu ? 'text-green-400' : ''}`}
-              title="Vision Menu"
+              // title="Vision Menu"
             >
               👁️
             </button>

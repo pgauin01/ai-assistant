@@ -168,7 +168,7 @@ ipcMain.on('start-live-system-capture', (event) => {
       if (!err) pcmChunks.push(buffer)
     })
 
-    // Every 2 seconds, package the raw audio into a valid WAV file and send to React
+    // Every 4 seconds, package the raw audio into a valid WAV file and send to React
     liveAudioInterval = setInterval(() => {
       if (pcmChunks.length === 0) return
 
@@ -182,11 +182,24 @@ ipcMain.on('start-live-system-capture', (event) => {
         fullBuffer.length / 4
       )
 
-      // 2. --- THE FIX: Downmix Stereo to Mono ---
-      // We average the Left and Right channels so it plays at normal speed!
+      // 2. Downmix Stereo to Mono AND calculate RMS (Volume Level)
       const monoArray = new Float32Array(stereoArray.length / 2)
+      let sumSquares = 0 // Track volume
+
       for (let i = 0; i < monoArray.length; i++) {
-        monoArray[i] = (stereoArray[i * 2] + stereoArray[i * 2 + 1]) / 2.0
+        const sample = (stereoArray[i * 2] + stereoArray[i * 2 + 1]) / 2.0
+        monoArray[i] = sample
+        sumSquares += sample * sample // Add square of the sample
+      }
+
+      // Calculate the Root Mean Square (RMS) to get the average volume
+      const rms = Math.sqrt(sumSquares / monoArray.length)
+
+      // --- THE SILENCE GATEKEEPER ---
+      // If the volume is basically silent, drop the chunk!
+      // This prevents Python/Whisper from burning CPU on dead air.
+      if (rms < 0.0005) {
+        return
       }
 
       // 3. Create the Mono WAV file
