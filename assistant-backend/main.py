@@ -183,7 +183,7 @@ class SnippingTool:
         
         # 3. THIN GREEN BAR: outline='#00ff00', width=1
         self.rect = self.canvas.create_rectangle(
-            self.start_x, self.start_y, 1, 1, outline="#3cff00", width=20, fill=""
+            self.start_x, self.start_y, 1, 1, outline="#3cff00", width=10, fill=""
         )
 
     def on_drag(self, event):

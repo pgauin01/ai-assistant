@@ -479,7 +479,7 @@ function App() {
           return
         }
 
-        // ðŸ›‘ THE STEALTH FIX: Sever the hardware connection immediately
+        //  THE STEALTH FIX: Sever the hardware connection immediately
         // the millisecond the recording stops. This hides the Windows Mic Icon.
         stopMediaStream()
 
@@ -600,6 +600,10 @@ function App() {
         setShowVisionMenu(false)
         return
       }
+      if (pendingCommand !== null) {
+        cancelVisionCommand()
+        return
+      }
       // If no menus are open and the input is empty, close the whole app!
       if (!input.trim() && !pendingCommand) {
         closeOverlay()
@@ -652,6 +656,26 @@ function App() {
         await sendTextMessage(input.trim())
       }
     }
+  }
+
+  const cancelVisionCommand = () => {
+    setPendingCommand(null)
+    setInput('')
+    setInputText('')
+
+    // Replace the "✏️ Edit command:" message with a cancelled notice
+    setMessages((prev) => {
+      const newMessages = [...prev]
+      const lastIndex = newMessages.length - 1
+
+      if (lastIndex >= 0 && newMessages[lastIndex].content.includes('✏️ Edit command:')) {
+        newMessages[lastIndex] = {
+          ...newMessages[lastIndex],
+          content: '🚫 Vision command cancelled.'
+        }
+      }
+      return newMessages
+    })
   }
 
   const handleDragHandlePointerDown = (e) => {
@@ -1006,6 +1030,20 @@ function App() {
               className="px-4 py-1.5 text-xs font-bold text-purple-200 bg-purple-900/40 border border-purple-400/40 rounded-lg hover:bg-purple-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
             >
               + Add Last 3 Sentences
+            </button>
+          </div>
+        )}
+        {pendingCommand !== null && (
+          <div className="w-[700px] mt-2 flex justify-end gap-3 animate-fade-in-up">
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                cancelVisionCommand()
+              }}
+              className="px-4 py-1.5 text-xs font-bold text-red-200 bg-red-900/40 border border-red-400/40 rounded-lg hover:bg-red-600 transition-colors cursor-default backdrop-blur-md shadow-lg"
+            >
+              ❌ Cancel Vision Command (ESC)
             </button>
           </div>
         )}
