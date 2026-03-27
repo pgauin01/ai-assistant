@@ -21,6 +21,8 @@ const SLASH_COMMANDS = [
 const BACKEND_BASE_URL = 'http://127.0.0.1:8000'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const createMeetingSessionId = () =>
+  `meeting-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 
 const fetchBackend = async (path, options = {}, retries = 4, retryDelayMs = 250) => {
   let lastError
@@ -68,7 +70,14 @@ function App() {
   const [isLiveTranscribing, setIsLiveTranscribing] = useState(false)
   const isLiveTranscribingRef = useRef(false)
   const liveWsRef = useRef(null)
+  const meetingSessionIdRef = useRef(createMeetingSessionId())
+  const [isSaving, setIsSaving] = useState(false)
   const [isBackendReady, setIsBackendReady] = useState(false)
+  const messagesRef = useRef([])
+
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
 
   useEffect(() => {
     isLiveTranscribingRef.current = isLiveTranscribing
@@ -215,14 +224,45 @@ function App() {
     }
   }, [])
 
+  const endMeeting = async () => {
+    if (isSaving) return
+
+    setIsSaving(true)
+
+    try {
+      const response = await fetchBackend('/agent/export-markdown', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: meetingSessionIdRef.current,
+          messages: messagesRef.current
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Export failed with status ${response.status}`)
+      }
+    } catch (error) {
+      console.error('Failed to export Markdown archive:', error)
+    } finally {
+      const ws = liveWsRef.current
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        ws.close()
+      }
+      liveWsRef.current = null
+      setIsLiveTranscribing(false)
+      window.api.stopLiveSystemCapture()
+      setIsSaving(false)
+      meetingSessionIdRef.current = createMeetingSessionId()
+    }
+  }
+
   const toggleLiveTranscription = () => {
     if (isLiveTranscribingRef.current) {
-      // STOP LIVE TRANSCRIPTION
-      window.api.stopLiveSystemCapture()
-      if (liveWsRef.current) liveWsRef.current.close()
-      setIsLiveTranscribing(false)
+      void endMeeting()
     } else {
       // START LIVE TRANSCRIPTION
+      meetingSessionIdRef.current = createMeetingSessionId()
       const ws = new WebSocket('ws://127.0.0.1:8000/ws/live-transcribe')
       liveWsRef.current = ws
 
@@ -269,6 +309,7 @@ function App() {
 
       ws.onclose = () => {
         setIsLiveTranscribing(false)
+        liveWsRef.current = null
         window.api.stopLiveSystemCapture()
       }
     }
@@ -1105,6 +1146,21 @@ function App() {
               onPointerDown={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
+                endMeeting()
+              }}
+              disabled={isSaving}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors backdrop-blur-md shadow-lg border ${
+                isSaving
+                  ? 'text-gray-300 bg-gray-700/70 border-gray-500/60 cursor-not-allowed'
+                  : 'text-red-100 bg-red-900/50 border-red-400/50 hover:bg-red-600 cursor-pointer'
+              }`}
+            >
+              {isSaving ? 'Saving transcript...' : 'Stop & Save Meeting'}
+            </button>
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
                 handleContextualAction('answer')
               }}
               className="px-3 py-1.5 text-xs font-bold text-green-200 bg-green-900/40 border border-green-400/40 rounded-lg hover:bg-green-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
@@ -1291,7 +1347,7 @@ function App() {
               !isBackendReady
                 ? 'Connecting to AI Engine...'
                 : isLiveTranscribing
-                  ? '🔴 Live System Capturing... (Ctrl+Q to stop)'
+                  ? '🔴 Live System Capturing... use Stop & Save Meeting'
                   : isListening
                     ? 'Listening to system audio...'
                     : isRecording
@@ -1323,12 +1379,12 @@ function App() {
               e.stopPropagation()
               toggleLiveTranscription()
             }}
-            disabled={isThinking || isRecording || !isBackendReady}
+            disabled={isThinking || isRecording || !isBackendReady || isSaving}
             className={`absolute right-12 top-1/2 -translate-y-1/2 z-20 p-2 transition-all duration-300 ${
               isLiveTranscribing
                 ? 'text-red-400 animate-pulse drop-shadow-[0_0_8px_rgba(248,113,113,0.8)]'
                 : 'text-gray-500 hover:text-cyan-400'
-            } ${isThinking || isRecording ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            } ${isThinking || isRecording || isSaving ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
             // title={isLiveTranscribing ? 'Stop Ambient Listening' : 'Start Ambient Listening'}
           >
             {isLiveTranscribing ? '🛑' : '🎧'}

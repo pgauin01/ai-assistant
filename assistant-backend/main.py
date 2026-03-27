@@ -43,6 +43,8 @@ import sys
 import threading
 from fastapi.responses import JSONResponse, StreamingResponse
 from contextlib import asynccontextmanager
+from typing import List
+from datetime import datetime
 
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # <--- ADD THIS FIX
@@ -352,6 +354,14 @@ class ChatRequest(BaseModel):
 
 class TranscribeRequest(BaseModel):
     audio_path: str
+
+class ExportMessage(BaseModel):
+    role: str  # e.g., "System Audio", "User Action", "AI Answer"
+    content: str
+
+class ExportRequest(BaseModel):
+    session_id: str
+    messages: List[ExportMessage]    
 
 
 llm = ChatOllama(
@@ -1196,6 +1206,28 @@ async def live_transcribe(websocket: WebSocket):
                     
     except WebSocketDisconnect:
         print("Live transcription WebSocket disconnected.")
+
+@app.post("/agent/export-markdown")
+async def export_markdown(request: ExportRequest):
+    # Ensure the archive directory exists
+    archive_dir = "meeting_archives"
+    os.makedirs(archive_dir, exist_ok=True)
+    
+    # Generate a timestamped filename
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"{archive_dir}/meeting_{timestamp}_{request.session_id}.md"
+    
+    # Write the Markdown file
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(f"# Meeting Archive: {request.session_id}\n")
+        f.write(f"**Date:** {datetime.now().strftime('%B %d, %Y at %I:%M %p')}\n\n")
+        f.write("---\n\n")
+        
+        for msg in request.messages:
+            f.write(f"### {msg.role}\n")
+            f.write(f"{msg.content}\n\n")
+            
+    return {"status": "success", "file": filename}        
 
 # -----------------------------
 # Server Startup (Crucial for .exe)
