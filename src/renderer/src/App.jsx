@@ -394,6 +394,10 @@ function App() {
         displayCommand = 'Suggest follow-up questions'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]\nSuggest 3 insightful, senior-level follow-up questions I can ask based on the context of this live conversation. Make them highly technical if the context is coding.\n\nLive Conversation:\n"${rawText}"`
         break
+      case 'stepbystep':
+        displayCommand = 'Step-by-Step Explanation'
+        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]\nFirst, briefly summarize the following live conversation and identify the core technical question being discussed. Then, provide a clear, step-by-step explanation to solve or understand it. You MUST include code examples if the topic is related to programming.\n\nLive Conversation:\n"${rawText}"`
+        break
       default:
         return
     }
@@ -1146,21 +1150,6 @@ function App() {
               onPointerDown={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
-                endMeeting()
-              }}
-              disabled={isSaving}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors backdrop-blur-md shadow-lg border ${
-                isSaving
-                  ? 'text-gray-300 bg-gray-700/70 border-gray-500/60 cursor-not-allowed'
-                  : 'text-red-100 bg-red-900/50 border-red-400/50 hover:bg-red-600 cursor-pointer'
-              }`}
-            >
-              {isSaving ? 'Saving transcript...' : 'Stop & Save Meeting'}
-            </button>
-            <button
-              onPointerDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
                 handleContextualAction('answer')
               }}
               className="px-3 py-1.5 text-xs font-bold text-green-200 bg-green-900/40 border border-green-400/40 rounded-lg hover:bg-green-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
@@ -1208,6 +1197,31 @@ function App() {
               className="px-3 py-1.5 text-xs font-bold text-orange-200 bg-orange-900/40 border border-orange-400/40 rounded-lg hover:bg-orange-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
             >
               ❓ Follow-up
+            </button>
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleContextualAction('stepbystep')
+              }}
+              className="px-3 py-1.5 text-xs font-bold text-amber-200 bg-amber-900/40 border border-amber-400/40 rounded-lg hover:bg-amber-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
+            >
+              🪜 Step-by-Step
+            </button>
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                endMeeting()
+              }}
+              disabled={isSaving}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors backdrop-blur-md shadow-lg border ${
+                isSaving
+                  ? 'text-gray-300 bg-gray-700/70 border-gray-500/60 cursor-not-allowed'
+                  : 'text-red-100 bg-red-900/50 border-red-400/50 hover:bg-red-600 cursor-pointer'
+              }`}
+            >
+              {isSaving ? 'Saving transcript...' : 'Stop & Save Meeting'}
             </button>
           </div>
         )}

@@ -8,10 +8,6 @@ from io import BytesIO
 from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-try:
-    import whisper
-except ImportError:
-    whisper = None
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
@@ -128,6 +124,8 @@ except Exception as e:
 
 OLLAMA_BASE_URL = "http://localhost:11434"
 OLLAMA_MODEL = "qwen2.5-coder:3b"
+# OLLAMA_MODEL = "gemini-3-flash-preview:latest"
+
 
 # testing purposes only - this class creates a full-screen transparent overlay that lets you draw a box to capture a screenshot region. You can then run OCR on that region to extract text from images of code, error messages, etc.
 import ctypes
@@ -292,10 +290,10 @@ np.fromstring = _safe_fromstring
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global whisper_model
-    print("[WARMUP] Pre-loading Whisper 'base.en' model to CPU in background...")
+    print("[WARMUP] Pre-loading Whisper 'base.en' model to CUDA...")
     try:
         if whisper_model is None and WhisperModel is not None:
-            whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=4)
+            whisper_model = WhisperModel("base.en", device="cuda", compute_type="int8_float16")
     except Exception as e:
         print(f"Failed to pre-load Whisper: {e}")
     
@@ -382,13 +380,6 @@ MOONDREAM_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlfaWQiOiI0NGU2Y2
 moondream_cloud = md.vl(api_key=MOONDREAM_API_KEY)
 
 whisper_model = None
-openai_whisper_model = None
-if whisper is not None:
-    try:
-        openai_whisper_model = whisper.load_model("base")
-        print("[WARMUP] openai-whisper 'base' model loaded.")
-    except Exception as e:
-        print(f"[WARNING] openai-whisper model load failed: {e}")
 
 
 def build_message_history(command: UserCommand):
@@ -416,13 +407,8 @@ def transcribe_audio_file(temp_audio_path: str) -> str:
     global whisper_model
     print("[DEBUG] Inside transcribe_audio_file")
 
-    if WhisperModel is None:
-        raise RuntimeError("faster-whisper is not installed.")
-
     if whisper_model is None:
-        print("[DEBUG] Loading Whisper 'base.en' model to CPU. This may take 15-30 seconds...")
-        whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=4)
-        print("[DEBUG] Whisper model successfully loaded to RAM!")
+        raise RuntimeError("Whisper model is not initialized. Check FastAPI lifespan startup.")
 
     print("[DEBUG] Running inference on audio file...")
 
@@ -537,40 +523,23 @@ async def execute_command(command: UserCommand):
 
 @app.post("/transcribe")
 async def transcribe(request: TranscribeRequest):
-    global openai_whisper_model
     global whisper_model
 
     audio_path = request.audio_path
 
-    if whisper is not None:
-        if openai_whisper_model is None:
-            openai_whisper_model = whisper.load_model("base")
-        result = openai_whisper_model.transcribe(audio_path)
-        return {"text": result.get("text", "").strip()}
+    if whisper_model is None:
+        raise HTTPException(status_code=500, detail="Whisper model is not initialized.")
 
-    if WhisperModel is not None:
-        if whisper_model is None:
-            whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=4)
-        
-        # --- THE FIX IS HERE ---
-        segments, _ = whisper_model.transcribe(
-            audio_path,
-            language="en",
-            beam_size=5,
-            vad_filter=True,
-        )
-        
-        # faster-whisper returns a generator, so we must iterate through it cleanly
-        texts = [seg.text.strip() for seg in segments if seg.text and seg.text.strip()]
-        transcript = " ".join(texts).strip()
-        
-        return {"text": transcript}
-        # -----------------------
-
-    raise HTTPException(
-        status_code=500,
-        detail="No transcription backend available. Install 'openai-whisper' or 'faster-whisper'.",
+    segments, _ = whisper_model.transcribe(
+        audio_path,
+        language="en",
+        beam_size=5,
+        vad_filter=True,
     )
+
+    texts = [seg.text.strip() for seg in segments if seg.text and seg.text.strip()]
+    transcript = " ".join(texts).strip()
+    return {"text": transcript}
 
 @app.post("/agent/voice")
 async def execute_voice(audio: UploadFile = File(...)):
@@ -766,9 +735,7 @@ async def listen_to_system_audio():
 
         global whisper_model
         if whisper_model is None:
-            if WhisperModel is None:
-                raise RuntimeError("faster-whisper not installed")
-            whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=4)
+            raise RuntimeError("Whisper model is not initialized. Check FastAPI lifespan startup.")
 
         optimized_jargon="Python, JavaScript, TypeScript, React, Next.js, FastAPI, Node.js, AWS, Docker, AI, LangChain, API",
     
@@ -977,7 +944,7 @@ async def execute_vision_command(request: ChatRequest):
         # screenshot = ImageGrab.grab()
         # 2. CAPTURE MODE: Use Snipping Tool for Fix/Explain, Full Screen for Create
         # if mode in ["fix"]:
-        if mode in ["fix", "explain"]:
+        if mode in ["fix", "explain", "create"]:
             print(f"Triggering Snipping Tool for {mode.upper()} mode...")
             screenshot = get_screen_snip()
         else:
@@ -1107,10 +1074,8 @@ async def live_transcribe(websocket: WebSocket):
     global whisper_model
     
     if whisper_model is None:
-        if WhisperModel is None:
-            await websocket.close(code=1011)
-            return
-        whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=4)
+        await websocket.close(code=1011)
+        return
 
     last_text = ""
 

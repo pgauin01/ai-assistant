@@ -381,14 +381,14 @@ app.whenReady().then(() => {
   })
 
   // 1. Register the Global Hotkey (Ctrl+Space or Cmd+Space)
-  globalShortcut.register('CommandOrControl+Space', () => {
+  globalShortcut.register('CommandOrControl+Shift+Down', () => {
     // 2. Send an IPC message to the React frontend
     if (mainWindow) {
       mainWindow.webContents.send('toggle-mic')
     }
   })
 
-  globalShortcut.register('CommandOrControl+Q', () => {
+  globalShortcut.register('CommandOrControl+Shift+Up', () => {
     if (mainWindow) {
       mainWindow.show()
       mainWindow.focus()
