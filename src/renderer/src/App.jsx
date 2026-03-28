@@ -898,7 +898,7 @@ function App() {
     setIsThinking(true)
 
     const newMessages = [
-      ...messages,
+      ...messagesRef.current,
       { role: 'user', content: '📸 [Vision: SMART] Analyzing snipped region...' }
     ]
     setMessages(newMessages)

@@ -56,8 +56,10 @@ Task:
 {command}
 
 CRITICAL RULES:
+
 1. Deeply analyze the concept or code.
-2. You MUST format your response EXACTLY using these headings:
+2. Detect the programming language accurately if discussing code.
+3. You MUST format your response EXACTLY using these markdown headings:
 
 ### Overview & Purpose
 [Write a clear, high-level summary of what this code or concept does]
@@ -74,17 +76,17 @@ Task:
 {command}
 
 CRITICAL RULES:
-1. Analyze the logic. Look for scope issues, bad math, or incorrect syntax.
-2. Do NOT invent OCR typos if the code is just logically wrong.
-3. You MUST format your response EXACTLY using these headings:
+
+1. Analyze the logic. Look for scope issues, bad math, mutable default arguments, or incorrect syntax. Do NOT invent syntax errors if none exist.
+2. Detect the programming language accurately for the code block.
+3. You MUST format your response EXACTLY using these markdown headings:
 
 ### Bug Analysis
 [Explain the specific logical or syntax bugs, why they break the code, and how to fix them]
 
 ### Corrected Code
-```javascript
+Code snippet
 // Your final, production-ready fixed code here
-```
 """
 
 VISION_CREATE_PROMPT = """
@@ -95,13 +97,86 @@ Task:
 
 CRITICAL RULES:
 1. Write the implementation for the requested feature based on the context.
-2. You MUST format your response EXACTLY using these headings:
+2. Detect the programming language accurately for the code block.
+3. You MUST format your response EXACTLY using these markdown headings:
 
 ### Implementation Strategy
 [Briefly explain the approach and libraries/functions used]
 
 ### Code
-```javascript
+```[insert correct language here]
 // Your feature implementation here
-```
+"""
+# VISION_SMART_PROMPT = "[Quick Command: SMART VISION]\nAnalyze the following text/code extracted from the user's screen. Determine what the user needs based on the context:\n- If it is a coding instruction, write the required code.\n- If it is broken code, find the bug, fix it, and explain the fix.\n- If it contains multiple-choice questions (MCQs), identify the questions, provide the correct answers, and give a brief step-by-step explanation.\n- If it is a general technical concept, explain it.\n\nExtracted Screen Content:\n{command}"
+# VISION_SMART_PROMPT = """
+# [Quick Command: SMART VISION]
+# You are a Senior Full-Stack & AI Engineer. Analyze the text/code extracted from the user's screen below. 
+# First, filter out any OCR noise or gibberish characters. Then, determine the user's intent and respond using ONLY one of the following four formats:
+
+# 1. IF THE CONTENT IS A CODING INSTRUCTION (e.g., "Write a function to... , "Implement a feature that..., "Create a component that..."):
+# ### Implementation Strategy
+# [Brief explanation of the approach]
+# ### Code
+# ```[language]
+# [Complete, production-ready code]
+
+# 2. IF IT IS BROKEN CODE:
+# Find the bug, fix it, and explain the fix. Format your response exactly like this:
+
+# Bug Analysis
+# [Explanation of the bug]
+
+# Corrected Code
+# Code snippet
+# // fixed code here
+
+# 3. IF IT IS MULTIPLE CHOICE QUESTIONS (MCQs):
+# Identify the questions, provide the correct answers, and give a brief step-by-step explanation for each.
+# Question Analysis & Answers
+# Identify each question and provide the correct option
+
+# 4. IF IT IS A TECHNICAL CONCEPT OR WORKING CODE:
+# Explain it deeply. Format your response exactly like this:
+
+# Overview & Purpose
+# [High-level summary]
+
+# Architecture & Deep Dive
+# [Technical breakdown]
+
+# Extracted Screen Content:
+# {command}
+# """
+
+VISION_CLASSIFY_PROMPT = """
+You are an expert routing AI. Read the text below and classify it into EXACTLY ONE of these four categories:
+
+- "create" : Choose this if the text contains natural language instructions asking to write, build, or implement code/features.
+- "fix" : Choose this if the text is just raw code that appears broken, buggy, or if it includes error messages.
+- "mcq" : Choose this if the text clearly contains multiple-choice questions (e.g., questions followed by A, B, C, D options).
+- "explain" : Choose this if the text is just a standard block of working code, a single syntax line, or a technical concept.
+
+Return ONLY the exact category name (create, fix, mcq, or explain). Do not output any other words, punctuation, or explanations.
+
+Content to classify:
+{command}
+"""
+
+VISION_MCQ_PROMPT = """
+You are an elite Software Engineering Tutor.
+The user has provided a multiple-choice question (MCQ) or test from their screen.
+
+Task:
+{command}
+
+CRITICAL RULES:
+1. Identify the questions and provide the correct answers.
+2. Give a brief step-by-step explanation for each.
+3. You MUST format your response EXACTLY using these headings:
+
+### Question Analysis & Answers
+[List each question and explicitly state the correct option]
+
+### Explanation
+[Briefly explain why the answers are correct]
 """

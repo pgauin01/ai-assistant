@@ -29,6 +29,8 @@ from prompts import (
     VISION_EXPLAIN_PROMPT,
     VISION_FIX_PROMPT,
     VISION_CREATE_PROMPT,
+    VISION_MCQ_PROMPT,
+    VISION_CLASSIFY_PROMPT
 )
 
 
@@ -47,7 +49,6 @@ import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # <--- ADD THIS FIX
 
 
-VISION_SMART_PROMPT = "[Quick Command: SMART VISION]\nAnalyze the following text/code extracted from the user's screen. Determine what the user needs based on the context:\n- If it is a coding instruction, write the required code.\n- If it is broken code, find the bug, fix it, and explain the fix.\n- If it contains multiple-choice questions (MCQs), identify the questions, provide the correct answers, and give a brief step-by-step explanation.\n- If it is a general technical concept, explain it.\n\nExtracted Screen Content:\n{command}"
 
 
 def load_env_file(path: str) -> None:
@@ -187,7 +188,7 @@ class SnippingTool:
         
         # 3. THIN GREEN BAR: outline='#00ff00', width=1
         self.rect = self.canvas.create_rectangle(
-            self.start_x, self.start_y, 1, 1, outline="#3cff00", width=10, fill=""
+            self.start_x, self.start_y, 1, 1, outline="#3cff00", width=15, fill=""
         )
 
     def on_drag(self, event):
@@ -805,26 +806,34 @@ if not os.path.exists(TESSERACT_PATH):
 
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
 
+
+import cv2
 # -----------------------------
 # OCR Text Extraction
 # -----------------------------
 def extract_text_from_image(image: Image.Image) -> str:
-    # Convert to grayscale
-    image = image.convert("L")
+    # 1. Convert PIL image to OpenCV format (RGB to BGR)
+    img_np = np.array(image.convert('RGB'))
+    img_np = img_np[:, :, ::-1].copy()
 
-    # Increase contrast (huge improvement)
-    import cv2
-    import numpy as np
+    # 2. Convert to Grayscale
+    gray = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY)
 
-    img_np = np.array(image)
-    img_np = cv2.threshold(img_np, 150, 255, cv2.THRESH_BINARY)[1]
+    # 3. Preserve Aspect Ratio Resize (Scale up by 2.5x for optimal Tesseract DPI)
+    gray = cv2.resize(gray, None, fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC)
 
-    # Resize for clarity
-    img_np = cv2.resize(img_np, (1200, 1200))
+    # 4. Handle Dark Mode (Tesseract prefers black text on a white background)
+    if np.mean(gray) < 127:
+        gray = cv2.bitwise_not(gray)
 
-    text = pytesseract.image_to_string(img_np)
+    # 5. Otsu's Thresholding to perfectly crisp up the text
+    _, processed_img = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
 
-    return text
+    # 6. Run Tesseract with Page Segmentation Mode 6 (Assume a single uniform block of text)
+    custom_config = r'--oem 3 --psm 6'
+    text = pytesseract.image_to_string(processed_img, config=custom_config)
+
+    return text.strip()
 
 # -----------------------------
 # Command Extraction
@@ -984,10 +993,12 @@ async def execute_vision_command(request: ChatRequest):
 
         # 4. Query the Moondream Cloud API
         print(f"Sending Stealth Image to Moondream Cloud API for {mode.upper()}...")
-        result = moondream_cloud.query(screenshot, prompt_text)
-        
-        extracted_text = result.get("answer", "").strip()
-        print(f"RAW MOONDREAM OUTPUT:\n{extracted_text}")
+        # result = moondream_cloud.query(screenshot, prompt_text)
+        # extracted_text = result.get("answer", "").strip()
+        # print(f"RAW MOONDREAM OUTPUT:\n{extracted_text}")
+        print("Running highly optimized LOCAL OCR for SMART mode...")
+        extracted_text = extract_text_from_image(screenshot)
+        print(f"RAW LOCAL OCR OUTPUT:\n{extracted_text}")
 
         # 5. Format the final command for the UI
         # We process the user's typed input box text if they provided any
@@ -1021,7 +1032,64 @@ async def execute_vision_command(request: ChatRequest):
         return {"status": "error", "response": str(e)}
 
 
-clean_code = ""   
+# clean_code = ""   
+# @app.post("/agent/confirm")
+# async def confirm_and_execute(data: dict):
+#     command = data.get("command", "")
+#     mode = data.get("mode", "").lower()
+
+#     if not command:
+#         async def stream_err():
+#             yield "No command provided"
+#         return StreamingResponse(stream_err(), media_type="text/plain")
+
+#     mode_router = {
+#         "explain": (VISION_EXPLAIN_PROMPT, 0.3),
+#         "fix": (VISION_FIX_PROMPT, 0.1),
+#         "create": (VISION_CREATE_PROMPT, 0.1),
+#         "smart": (VISION_SMART_PROMPT, 0.0),
+#     }
+#     prompt_template, temperature = mode_router.get(mode, mode_router["create"])
+#     prompt = prompt_template.format(command=command)
+
+#     async def generate_response():
+#         try:
+#             with requests.post(
+#                 f"{OLLAMA_BASE_URL}/api/generate",
+#                 json={
+#                     "model": OLLAMA_MODEL,
+#                     "prompt": prompt,
+#                     "stream": True,
+#                     "options": {
+#                         "temperature": temperature,
+#                         "num_predict": 1500
+#                     }
+#                 },
+#                 stream=True
+#             ) as response:
+#                 for line in response.iter_lines():
+#                     if not line:
+#                         continue
+#                     try:
+#                         payload = json.loads(line.decode("utf-8"))
+#                         chunk = payload.get("response", "")
+#                         if chunk:
+#                             yield chunk
+#                     except Exception:
+#                         continue
+#         except Exception as e:
+#             yield f"\n\nError generating response: {e}"
+
+#     return StreamingResponse(
+#         generate_response(), 
+#         media_type="text/event-stream",
+#         headers={
+#             "Cache-Control": "no-cache, no-transform",
+#             "Connection": "keep-alive",
+#             "X-Accel-Buffering": "no"
+#         }
+#     )
+
 @app.post("/agent/confirm")
 async def confirm_and_execute(data: dict):
     command = data.get("command", "")
@@ -1032,13 +1100,68 @@ async def confirm_and_execute(data: dict):
             yield "No command provided"
         return StreamingResponse(stream_err(), media_type="text/plain")
 
+    # --- MANUAL OVERRIDE CHECK ---
+    # If the user explicitly typed /fix or /exp in the UI edit box, bypass the smart router.
+    import re
+    command_lower = command.lower()
+    
+    if "/fix" in command_lower:
+        mode = "fix"
+        # Strip the command out so it doesn't pollute the LLM prompt
+        command = re.sub(r'(?i)/fix', '', command).strip()
+        print("[OVERRIDE] User manually forced FIX mode.")
+        
+    elif "/exp" in command_lower or "/explain" in command_lower:
+        mode = "explain"
+        command = re.sub(r'(?i)/explain', '', command)
+        command = re.sub(r'(?i)/exp', '', command).strip()
+        print("[OVERRIDE] User manually forced EXPLAIN mode.")
+
+    elif "/create" in command_lower:
+        mode = "create"
+        command = re.sub(r'(?i)/create', '', command).strip()
+        print("[OVERRIDE] User manually forced CREATE mode.")
+
+    # --- AGENTIC ROUTER: Step 1 (Classification) ---
+    # This will now ONLY run if the user didn't type a manual override command!
+    if mode == "smart":
+        print("[SMART] Running pre-classification...")
+        classify_prompt = VISION_CLASSIFY_PROMPT.format(command=command)
+        try:
+            class_res = requests.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "prompt": classify_prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.0, 
+                        "num_predict": 10 
+                    }
+                }
+            )
+            detected_mode = class_res.json().get("response", "").strip().lower()
+            
+            if "create" in detected_mode: mode = "create"
+            elif "fix" in detected_mode: mode = "fix"
+            elif "mcq" in detected_mode: mode = "mcq"
+            else: mode = "explain" 
+            
+            print(f"[SMART] Classified as: {mode.upper()}")
+            
+        except Exception as e:
+            print(f"[SMART] Classification failed: {e}. Falling back to explain.")
+            mode = "explain"
+
+    # --- AGENTIC ROUTER: Step 2 (Execution Mapping) ---
     mode_router = {
         "explain": (VISION_EXPLAIN_PROMPT, 0.3),
         "fix": (VISION_FIX_PROMPT, 0.1),
         "create": (VISION_CREATE_PROMPT, 0.1),
-        "smart": (VISION_SMART_PROMPT, 0.2),
+        "mcq": (VISION_MCQ_PROMPT, 0.1),
     }
-    prompt_template, temperature = mode_router.get(mode, mode_router["create"])
+    
+    prompt_template, temperature = mode_router.get(mode, mode_router["explain"])
     prompt = prompt_template.format(command=command)
 
     async def generate_response():
