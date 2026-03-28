@@ -32,6 +32,7 @@ from prompts import (
 )
 
 
+
 import tkinter as tk
 from PIL import ImageGrab
 import moondream as md
@@ -44,6 +45,9 @@ from datetime import datetime
 
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # <--- ADD THIS FIX
+
+
+VISION_SMART_PROMPT = "[Quick Command: SMART VISION]\nAnalyze the following text/code extracted from the user's screen. Determine what the user needs based on the context:\n- If it is a coding instruction, write the required code.\n- If it is broken code, find the bug, fix it, and explain the fix.\n- If it contains multiple-choice questions (MCQs), identify the questions, provide the correct answers, and give a brief step-by-step explanation.\n- If it is a general technical concept, explain it.\n\nExtracted Screen Content:\n{command}"
 
 
 def load_env_file(path: str) -> None:
@@ -933,6 +937,7 @@ async def execute_vision_command(request: ChatRequest):
             if "[Vision: FIX]" in last_msg: mode = "fix"
             elif "[Vision: EXPLAIN]" in last_msg: mode = "explain"
             elif "[Vision: HELP]" in last_msg: mode = "help"
+            elif "[Vision: SMART]" in last_msg: mode = "smart"
             
             if "] " in last_msg:
                 instruction = last_msg.split("] ", 1)[-1]
@@ -944,7 +949,7 @@ async def execute_vision_command(request: ChatRequest):
         # screenshot = ImageGrab.grab()
         # 2. CAPTURE MODE: Use Snipping Tool for Fix/Explain, Full Screen for Create
         # if mode in ["fix"]:
-        if mode in ["fix", "explain", "create"]:
+        if mode in ["fix", "explain", "create", "smart"]:
             print(f"Triggering Snipping Tool for {mode.upper()} mode...")
             screenshot = get_screen_snip()
         else:
@@ -970,6 +975,11 @@ async def execute_vision_command(request: ChatRequest):
                 "Perfectly extract this entire code block so it can be debugged. "
                 "Wrap the extracted code strictly in standard Markdown backticks (```). "
                 "Do not include any greetings or conversational filler."
+            )
+        elif mode == "smart":
+            prompt_text = (
+                "Extract all text, code, instructions, or multiple-choice questions perfectly from this image. "
+                "Do not attempt to solve or answer them, just transcribe the raw content accurately."
             )
 
         # 4. Query the Moondream Cloud API
@@ -1026,6 +1036,7 @@ async def confirm_and_execute(data: dict):
         "explain": (VISION_EXPLAIN_PROMPT, 0.3),
         "fix": (VISION_FIX_PROMPT, 0.1),
         "create": (VISION_CREATE_PROMPT, 0.1),
+        "smart": (VISION_SMART_PROMPT, 0.2),
     }
     prompt_template, temperature = mode_router.get(mode, mode_router["create"])
     prompt = prompt_template.format(command=command)

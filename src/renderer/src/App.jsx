@@ -212,6 +212,15 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    if (window.api && window.api.onTriggerSmartVision) {
+      const cleanup = window.api.onTriggerSmartVision(() => {
+        handleSmartVision()
+      })
+      return () => cleanup?.()
+    }
+  }, [])
+
   // 2. Stream the Rust audio to Python
   useEffect(() => {
     if (window.api && window.api.onLiveSystemAudioChunk) {
@@ -880,6 +889,48 @@ function App() {
       console.error('captureAndTranscribe error:', error)
     } finally {
       setIsListening(false)
+    }
+  }
+
+  const handleSmartVision = async () => {
+    window.api.hideOverlay()
+    setVisionMode('smart')
+    setIsThinking(true)
+
+    const newMessages = [
+      ...messages,
+      { role: 'user', content: '📸 [Vision: SMART] Analyzing snipped region...' }
+    ]
+    setMessages(newMessages)
+
+    try {
+      const res = await fetchBackend('/agent/vision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newMessages })
+      })
+      const data = await res.json()
+
+      if (data.status === 'needs_confirmation') {
+        setPendingCommand(data.command)
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: `✏️ Edit command:\n\n${data.command}`
+          }
+        ])
+      } else if (data.status === 'success') {
+        setMessages((prev) => [...prev, { role: 'assistant', content: data.response }])
+      }
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Network Error: Could not reach the AI backend.' }
+      ])
+    } finally {
+      setIsThinking(false)
     }
   }
 

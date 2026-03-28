@@ -19,6 +19,11 @@ const api = {
     ipcRenderer.on('toggle-live-transcription', listener)
     return () => ipcRenderer.removeListener('toggle-live-transcription', listener)
   },
+  onTriggerSmartVision: (callback) => {
+    const listener = () => callback()
+    ipcRenderer.on('trigger-smart-vision', listener)
+    return () => ipcRenderer.removeListener('trigger-smart-vision', listener)
+  },
   startLiveSystemCapture: () => ipcRenderer.send('start-live-system-capture'),
   stopLiveSystemCapture: () => ipcRenderer.send('stop-live-system-capture'),
   onLiveSystemAudioChunk: (callback) => {

@@ -395,6 +395,15 @@ app.whenReady().then(() => {
       mainWindow.webContents.send('toggle-live-transcription')
     }
   })
+
+  globalShortcut.register('CommandOrControl+Q', () => {
+    if (mainWindow) {
+      mainWindow.show()
+      mainWindow.setIgnoreMouseEvents(false)
+      mainWindow.focus()
+      mainWindow.webContents.send('trigger-smart-vision')
+    }
+  })
 })
 
 app.on('will-quit', () => {
