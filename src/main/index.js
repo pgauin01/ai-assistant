@@ -279,7 +279,7 @@ async function launchBackend() {
       cwd: dirname(backendPath), // CRITICAL: Sets working directory so it finds the FAISS DB!
       detached: false,
       windowsHide: true,
-      env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1' }
     })
 
     // Capture standard info logs

@@ -391,9 +391,9 @@ function App() {
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]\nAnalyze the following live conversation and identify the core technical question or concept being discussed. Provide a HIGHLY DETAILED, comprehensive answer to that implicit question. \n\nCRITICAL: For programming topics, you MUST explain the under-the-hood mechanics (e.g., Event Loop, Web APIs, memory, time/space complexity) and provide robust code examples.\n\nLive Conversation:\n"${rawText}"`
         break
       // -------------------------
-      case 'shorten':
-        displayCommand = 'Shorten response'
-        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]\nPlease summarize and shorten the following live conversation into a quick, digestible format. If it's a technical topic, include a 1-2 line code example.\n\nLive Conversation:\n"${rawText}"`
+      case 'summary':
+        displayCommand = 'Summary & Questions'
+        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]\nPlease provide a clear, concise summary of the following live conversation. After the summary, explicitly extract and list any questions that were asked during the conversation under a "**Questions Asked:**" heading. If no questions were asked in the text, just provide the summary.\n\nLive Conversation:\n"${rawText}"`
         break
       case 'recap':
         displayCommand = 'Recap conversation'
@@ -1223,11 +1223,11 @@ function App() {
               onPointerDown={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
-                handleContextualAction('shorten')
+                handleContextualAction('summary')
               }}
               className="px-3 py-1.5 text-xs font-bold text-blue-200 bg-blue-900/40 border border-blue-400/40 rounded-lg hover:bg-blue-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
             >
-              ✂️ Shorten
+              ✂️ Summary
             </button>
             <button
               onPointerDown={(e) => {
