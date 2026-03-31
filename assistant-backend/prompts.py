@@ -102,48 +102,11 @@ CRITICAL RULES:
 
 ### Code
 ```[insert correct language here]
-// Your feature implementation here
+// 1. Your feature implementation here
+
+// 2. Example Usage:
+// [Initialize sample data, call the function, and print/log the output]
 """
-# VISION_SMART_PROMPT = "[Quick Command: SMART VISION]\nAnalyze the following text/code extracted from the user's screen. Determine what the user needs based on the context:\n- If it is a coding instruction, write the required code.\n- If it is broken code, find the bug, fix it, and explain the fix.\n- If it contains multiple-choice questions (MCQs), identify the questions, provide the correct answers, and give a brief step-by-step explanation.\n- If it is a general technical concept, explain it.\n\nExtracted Screen Content:\n{command}"
-# VISION_SMART_PROMPT = """
-# [Quick Command: SMART VISION]
-# You are a Senior Full-Stack & AI Engineer. Analyze the text/code extracted from the user's screen below. 
-# First, filter out any OCR noise or gibberish characters. Then, determine the user's intent and respond using ONLY one of the following four formats:
-
-# 1. IF THE CONTENT IS A CODING INSTRUCTION (e.g., "Write a function to... , "Implement a feature that..., "Create a component that..."):
-# ### Implementation Strategy
-# [Brief explanation of the approach]
-# ### Code
-# ```[language]
-# [Complete, production-ready code]
-
-# 2. IF IT IS BROKEN CODE:
-# Find the bug, fix it, and explain the fix. Format your response exactly like this:
-
-# Bug Analysis
-# [Explanation of the bug]
-
-# Corrected Code
-# Code snippet
-# // fixed code here
-
-# 3. IF IT IS MULTIPLE CHOICE QUESTIONS (MCQs):
-# Identify the questions, provide the correct answers, and give a brief step-by-step explanation for each.
-# Question Analysis & Answers
-# Identify each question and provide the correct option
-
-# 4. IF IT IS A TECHNICAL CONCEPT OR WORKING CODE:
-# Explain it deeply. Format your response exactly like this:
-
-# Overview & Purpose
-# [High-level summary]
-
-# Architecture & Deep Dive
-# [Technical breakdown]
-
-# Extracted Screen Content:
-# {command}
-# """
 
 VISION_CLASSIFY_PROMPT = """
 You are an expert routing AI. Read the text below and classify it into EXACTLY ONE of these four categories:
