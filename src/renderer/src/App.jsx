@@ -446,13 +446,13 @@ Live Transcript:
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
 Task: Provide a Senior-level technical solution for the coding question in the transcript.
 Rules:
-1. ZERO IMPORTS OR LIBRARIES. You MUST solve the problem using strictly vanilla, built-in language features (e.g., no multiprocessing, collections, itertools, math, etc.).
-2. Do NOT create a separate "Line-by-Line Narrative" section. Instead, embed the narrative DIRECTLY inside the code block as highly detailed inline comments explaining the "Why" and "How" for the interviewer.
+1. ZERO IMPORTS OR LIBRARIES. You MUST solve the problem using strictly built-in language features (e.g., no multiprocessing, collections, itertools, math, etc.).
+2. Do NOT create a separate "Line-by-Line Narrative" section. Instead, embed the narrative DIRECTLY inside the code block as highly detailed inline comments explaining the "Why" and "How" for the evaluator.
 3. You MUST include a distinct "Example Usage" section at the bottom of the code block demonstrating how to call the function and print the result.
 4. Format EXACTLY with these headings:
    ### 1. Optimal Approach (The "High-Level" logic)
    ### 2. Time & Space Complexity
-   ### 3. Code Implementation (With embedded narrative comments)
+   ### 3. Code Implementation (with detailed inline comments)
 5. NO chatbot fluff. NO introductory sentences.
 
 Live Transcript:
@@ -700,7 +700,6 @@ Live Transcript:
         const recordingDuration = Date.now() - recordingStartTimeRef.current
         if (recordingDuration < 500) {
           console.warn('Recording too short, ignoring.')
-          showMicToast('Recording too short')
           stopMediaStream() // <-- FIX: Kill stream if aborted
           return
         }
@@ -753,6 +752,21 @@ Live Transcript:
       }
       stopRecordingTimeoutRef.current = null
     }, 400)
+  }
+
+  const toggleRecording = async (e) => {
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+
+    const recorder = mediaRecorderRef.current
+    if (recorder && recorder.state === 'recording') {
+      stopRecording()
+      return
+    }
+
+    await startRecording()
   }
 
   const executeSlashCommand = async (commandId) => {
@@ -1369,8 +1383,8 @@ Live Transcript:
             onChange={(e) => setSelectedModel(e.target.value)}
             className="bg-gray-800 text-gray-200 text-xs rounded border border-gray-600 px-2 py-1 outline-none focus:border-blue-500"
           >
-            <option value="qwen2.5-coder:3b">Qwen 2.5 Coder (3B) - Fast</option>
-            <option value="qwen2.5-coder:7b">Qwen 2.5 Coder (7B) - Smart</option>
+            <option value="qwen2.5-coder:3b">Qwen 2.5 Coder (3B)</option>
+            {/* <option value="qwen2.5-coder:7b">Qwen 2.5 Coder (7B) - Smart</option> */}
             <option value="gemini-3-flash-preview:latest">gemini-3-flash </option>
             <option value="glm-5:cloud">glm-5</option>
           </select>
@@ -1408,12 +1422,7 @@ Live Transcript:
           {/* ----------------------------------- */}
           <button
             type="button"
-            onMouseDown={startRecording}
-            onMouseUp={stopRecording}
-            onMouseLeave={stopRecording}
-            onTouchStart={startRecording}
-            onTouchEnd={stopRecording}
-            onTouchCancel={stopRecording}
+            onClick={toggleRecording}
             disabled={isThinking}
             className={`absolute left-3 top-1/2 -translate-y-1/2 z-20 rounded-xl p-2 border shadow-lg transition-colors ${
               isRecording

@@ -459,7 +459,16 @@ async def execute_command(command: UserCommand):
         "ragchatbot", "college project"
     ]
     
-    is_career_question = "[Quick Command: CAREER]" in command.text or any(kw in user_text_lower for kw in career_triggers)
+    # 1. Check if the user explicitly clicked the Career button
+    is_explicit_career = "[Quick Command: CAREER]" in command.text
+    
+    # 2. Check if a DIFFERENT lifeline button was clicked (Coding, Design, etc.)
+    is_other_command = "[Quick Command:" in command.text and not is_explicit_career
+    
+    # 3. Only use the keyword triggers if NO other command is currently active
+    is_career_question = is_explicit_career or (
+        not is_other_command and any(kw in user_text_lower for kw in career_triggers)
+    )
 
     context = ""
     question = command.text
