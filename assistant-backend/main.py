@@ -347,6 +347,7 @@ class ConversationMessage(BaseModel):
 class UserCommand(BaseModel):
     text: str = ""
     messages: list[ConversationMessage] = Field(default_factory=list)
+    tech_stack: str = "" 
 
 
 class Message(BaseModel):
@@ -450,7 +451,6 @@ async def health_check():
 
 @app.post("/agent/execute")
 async def execute_command(command: UserCommand):
-    formatted_messages = build_message_history(command)
     user_text_lower = command.text.lower()
     
     career_triggers = [
@@ -462,6 +462,9 @@ async def execute_command(command: UserCommand):
     is_career_question = "[Quick Command: CAREER]" in command.text or any(kw in user_text_lower for kw in career_triggers)
 
     context = ""
+    question = command.text
+
+    # --- CAREER ROUTE HANDLING ---
     if is_career_question:
         if "Question:\n\n" in command.text:
             question = command.text.split("Question:\n\n")[-1].strip()
@@ -498,17 +501,45 @@ async def execute_command(command: UserCommand):
             async def stream_err():
                 yield f"Missing career data file. Looked in: {CAREER_DATA_DIR}"
             return StreamingResponse(stream_err(), media_type="text/plain")
-        
-        formatted_messages = [
-            SystemMessage(content=CAREER_AGENT_PROMPT.format(context=context).strip()),
-            HumanMessage(content=question)
-        ]
 
-    if len(formatted_messages) == 1:
+    # --- MESSAGE ASSEMBLY & REMINDER INJECTION ---
+    formatted_messages = []
+    
+    if is_career_question:
+        system_prompt = CAREER_AGENT_PROMPT.format(context=context).strip()
+        reminder = "\n\n[CRITICAL REMINDER: Answer in 3 sentences max. Speak in the first-person ('I built...'). NO preambles, NO greetings, NO bullet points.]"
+        
+        formatted_messages.append(SystemMessage(content=system_prompt))
+        formatted_messages.append(HumanMessage(content=question))
+    else:
+        # Format the prompt dynamically using the payload from React
+        # Fallback to a generic string just in case the frontend sends an empty value
+        safe_stack = command.tech_stack if command.tech_stack else "Standard Web Development Stack"
+        system_prompt = FAST_CODING_PROMPT.format(tech_stack=safe_stack)
+        
+        reminder = "\n\n[CRITICAL REMINDER: Output ONLY the requested code. No fluff. If the request is a recipe, writing, or unrelated to software engineering, you MUST reply EXACTLY with 'Out of scope.' Do NOT output JSON for non-tech requests.]"
+        
+        formatted_messages.append(SystemMessage(content=system_prompt))
+        
+        # Add historical messages (excluding the last one)
+        for msg in command.messages[:-1]:
+            if msg.role == "user":
+                formatted_messages.append(HumanMessage(content=msg.content))
+            elif msg.role == "assistant":
+                formatted_messages.append(AIMessage(content=msg.content))
+                
+        # Inject reminder into the final user message
+        if command.messages:
+            last_user_text = command.messages[-1].content
+            formatted_messages.append(HumanMessage(content=last_user_text))
+        else:
+            formatted_messages.append(HumanMessage(content=command.text))
+
+    if not formatted_messages:
         async def stream_err(): yield "Please send a prompt."
         return StreamingResponse(stream_err(), media_type="text/plain")
 
-    # -Stream tokens directly to React ---
+    # --- STREAM TO REACT ---
     async def generate_response():
         try:
             for chunk in llm.stream(formatted_messages):
@@ -519,7 +550,7 @@ async def execute_command(command: UserCommand):
 
     return StreamingResponse(
         generate_response(), 
-        media_type="text/event-stream",
+        media_type="text/plain", # <-- Fixed for production Electron builds
         headers={
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",

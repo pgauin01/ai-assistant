@@ -26,6 +26,7 @@ const api = {
   },
   startLiveSystemCapture: () => ipcRenderer.send('start-live-system-capture'),
   stopLiveSystemCapture: () => ipcRenderer.send('stop-live-system-capture'),
+  saveAndExit: (markdownContent) => ipcRenderer.send('save-and-exit', markdownContent),
   onLiveSystemAudioChunk: (callback) => {
     const listener = (event, chunk) => callback(chunk)
     ipcRenderer.on('live-system-audio-chunk', listener)

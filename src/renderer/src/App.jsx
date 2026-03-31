@@ -9,7 +9,6 @@ const SLASH_COMMANDS = [
   { id: 'fix', icon: '🛠️', label: 'Fix', desc: 'Fix and explain broken code' },
   { id: 'create', icon: '✨', label: 'Create', desc: 'Write a production-ready program' },
   { id: 'clear', icon: '🗑️', label: 'Clear', desc: 'Clear the chat history' },
-  { id: 'career', icon: '💼', label: 'Career', desc: 'Ask about my projects & experience' },
   // { id: 'system', icon: '🎧', label: 'Wiretap', desc: 'Listen to system audio (10s)' },
   // --- NEW: Z-Macro Commands for fast testing ---
   { id: 'z-hustlebot', icon: '🤖', label: 'HustleBot', desc: 'tell me about hustle bot' },
@@ -74,6 +73,18 @@ function App() {
   const [isSaving, setIsSaving] = useState(false)
   const [isBackendReady, setIsBackendReady] = useState(false)
   const messagesRef = useRef([])
+  const DEFAULT_STACK = `- Backend: Python, FastAPI, Node.js, Express, Django\n- Frontend: React, JavaScript, modern web standards, Streamlit\n- Cloud & DevOps: AWS, Azure, GCP, Docker, Kubernetes, CI/CD pipelines\n- AI/ML: Generative AI, Advanced RAG, LangGraph, LangChain, Vector DBs, LiteLLM, AWS Bedrock, Azure AI services`
+
+  // Load from local storage, or use default
+  const [techStack, setTechStack] = useState(
+    () => localStorage.getItem('userTechStack') || DEFAULT_STACK
+  )
+  const [showSettings, setShowSettings] = useState(false)
+
+  // Save to local storage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('userTechStack', techStack)
+  }, [techStack])
 
   useEffect(() => {
     messagesRef.current = messages
@@ -381,32 +392,87 @@ function App() {
     let augmentedPrompt = ''
 
     switch (actionType) {
-      case 'answer':
-        displayCommand = 'What should I answer?'
-        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]\nBased on the following live conversation, suggest a strong, concise response I can say right now. \n\nCRITICAL: If the conversation is about programming, coding interviews, or software architecture, you MUST include a brief, practical code snippet demonstrating the concept.\n\nLive Conversation:\n"${rawText}"`
-        break
-      // --- ADD THIS NEW CASE ---
-      case 'detailed':
-        displayCommand = 'Detailed Answer'
-        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]\nAnalyze the following live conversation and identify the core technical question or concept being discussed. Provide a HIGHLY DETAILED, comprehensive answer to that implicit question. \n\nCRITICAL: For programming topics, you MUST explain the under-the-hood mechanics (e.g., Event Loop, Web APIs, memory, time/space complexity) and provide robust code examples.\n\nLive Conversation:\n"${rawText}"`
-        break
-      // -------------------------
+      // 1. SUMMARIZE THE QUESTION (When the interviewer is rambling)
       case 'summary':
-        displayCommand = 'Summary & Questions'
-        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]\nPlease provide a clear, concise summary of the following live conversation. After the summary, explicitly extract and list any questions that were asked during the conversation under a "**Questions Asked:**" heading. If no questions were asked in the text, just provide the summary.\n\nLive Conversation:\n"${rawText}"`
+        displayCommand = 'Summarize Question'
+        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
+You are assisting a candidate in a live technical interview. 
+Task: Extract the core technical question or task from this rambling transcript. 
+Rules: 
+1. DO NOT guess the interviewer's intent.
+2. DO NOT mention "past projects" unless explicitly stated.
+3. Output exactly 1 sentence starting with "They want you to design..." or "They are asking how to..."
+
+Live Transcript:
+"${rawText}"`
         break
-      case 'recap':
-        displayCommand = 'Recap conversation'
-        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]\nProvide a clear, bulleted recap of the key points discussed in this live conversation so far. If technical concepts were discussed, pair them with short code blocks.\n\nLive Conversation:\n"${rawText}"`
+
+      // 2. QUICK ANSWER (The 5-second Cheat Sheet)
+      case 'quick':
+        displayCommand = 'Quick Answer'
+        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
+Task: Provide a "cheat sheet" answer to the implicit question in this live transcript.
+Rules: 
+1. Use EXACTLY 3 short bullet points.
+2. Focus ONLY on core concepts, terminology, or direct syntax.
+3. NO chatbot fluff, NO greetings, NO full paragraphs. I need to read this in 5 seconds.
+
+Live Transcript:
+"${rawText}"`
         break
+
+      case 'design':
+        displayCommand = 'System Design'
+        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
+Task: Provide a highly comprehensive, Senior-level SYSTEM DESIGN architecture for the requirement in the transcript.
+Rules:
+1. Format EXACTLY with these headings:
+   ### 1. High-Level Architecture (Detail core components)
+   ### 2. End-to-End Data Flow
+   ### 3. Database Strategy (Justify SQL vs NoSQL)
+   ### 4. Scalability & Bottlenecks
+2. NO chatbot fluff. NO introductory sentences. NO code snippets.
+
+Live Transcript:
+"${rawText}"`
+        break
+
+      // 4. CODING DEEP DIVE ANSWER
+      case 'coding':
+        displayCommand = 'Coding Deep Dive'
+        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
+Task: Provide a Senior-level ALGORITHM/CODING solution for the implicit question in the transcript.
+Rules:
+1. Format EXACTLY with these headings:
+   ### 1. Optimal Approach
+   ### 2. Time & Space Complexity
+   ### 3. Edge Cases
+   ### 4. Code Implementation
+2. NO chatbot fluff. NO introductory sentences.
+
+Live Transcript:
+"${rawText}"`
+        break
+
+      // 4. FOLLOW-UP QUESTION (Sounding like an Architect)
       case 'followup':
-        displayCommand = 'Suggest follow-up questions'
-        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]\nSuggest 3 insightful, senior-level follow-up questions I can ask based on the context of this live conversation. Make them highly technical if the context is coding.\n\nLive Conversation:\n"${rawText}"`
+        displayCommand = 'Follow-up Questions'
+        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
+Task: Based on this interview transcript, generate 2 highly intelligent, senior-level clarifying questions the candidate can ask the interviewer.
+Strategy: Focus on architectural foresight (e.g., asking about data scale, edge cases, state management, or latency). 
+Rules: Output ONLY the 2 questions. Sound natural and conversational.
+
+Live Transcript:
+"${rawText}"`
         break
-      case 'stepbystep':
-        displayCommand = 'Step-by-Step Explanation'
-        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]\nFirst, briefly summarize the following live conversation and identify the core technical question being discussed. Then, provide a clear, step-by-step explanation to solve or understand it. You MUST include code examples if the topic is related to programming.\n\nLive Conversation:\n"${rawText}"`
+
+      // 5. CAREER / RESUME (Triggering the RAG backend)
+      case 'career':
+        displayCommand = 'Career Experience'
+        // This stays simple because main.py catches the tag and applies the CAREER_AGENT_PROMPT
+        augmentedPrompt = `[Quick Command: CAREER]\nQuestion:\n\n${rawText}`
         break
+
       default:
         return
     }
@@ -422,6 +488,25 @@ function App() {
 
   const sendTextMessage = async (displayCommand, augmentedPrompt = null) => {
     const payloadText = augmentedPrompt || displayCommand
+    const text = payloadText.trim()
+
+    if (text.toLowerCase() === '/exit') {
+      const dateStr = new Date().toISOString().replace(/[:.]/g, '-')
+      let markdown = `# Interview Meeting Transcript - ${dateStr}\n\n`
+
+      messages.forEach((msg) => {
+        const roleName = msg.role === 'user' ? '🧠 You / Live Audio' : '🤖 AI Assistant'
+        markdown += `### ${roleName}\n${msg.content}\n\n---\n\n`
+      })
+
+      if (window.api && window.api.saveAndExit) {
+        window.api.saveAndExit(markdown)
+      } else {
+        console.error('Electron API not found.')
+      }
+      return
+    }
+
     const userMessage = { role: 'user', content: displayCommand }
     const nextMessages = [...messages, userMessage]
 
@@ -431,11 +516,17 @@ function App() {
 
     try {
       const backendMessages = [...messages, { role: 'user', content: payloadText }]
+      const MAX_CONTEXT_MESSAGES = 6
+      const rollingContextMessages = backendMessages.slice(-MAX_CONTEXT_MESSAGES)
 
       const res = await fetch('http://127.0.0.1:8000/agent/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: payloadText, messages: backendMessages })
+        body: JSON.stringify({
+          text: payloadText,
+          messages: rollingContextMessages,
+          tech_stack: techStack
+        })
       })
 
       // The moment the server responds, drop the "Thinking..." pulse
@@ -1067,6 +1158,30 @@ function App() {
 
   return (
     <div className="w-screen h-screen flex flex-col items-center justify-start pt-20 bg-transparent">
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[600px] shadow-2xl">
+            <h2 className="text-xl font-bold text-white mb-2">Configure Core Tech Stack</h2>
+            <p className="text-xs text-gray-400 mb-4">
+              This tells the AI what languages and tools to prioritize in its answers.
+            </p>
+            <textarea
+              value={techStack}
+              onChange={(e) => setTechStack(e.target.value)}
+              className="w-full h-48 bg-gray-800 text-gray-200 border border-gray-600 rounded-lg p-3 text-sm focus:outline-none focus:border-blue-500 font-mono"
+            />
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={() => setShowSettings(false)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold transition-colors"
+              >
+                Save & Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* The Widget Wrapper: catches mouse and triggers NATIVE drag */}
       <div className="flex flex-col items-center pointer-events-auto">
         {/* Dedicated draggable strip so there's always a real drag target */}
@@ -1156,124 +1271,45 @@ function App() {
             </div>
           )}
         </div>
-        {/* --- ADD THIS NEW BLOCK FOR THE LIVE TRANSCRIPTION BUTTONS --- */}
-        {/* {(isLiveTranscribing ||
-          messages.some((msg) => msg.content?.includes('[Live System Audio]'))) && (
-          <div className="w-[700px] mt-2 flex justify-end gap-3 animate-fade-in-up">
-            <button
-              onPointerDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                appendLastSentences(1)
-              }}
-              className="px-4 py-1.5 text-xs font-bold text-blue-200 bg-blue-900/40 border border-blue-400/40 rounded-lg hover:bg-blue-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
-            >
-              + Add Last Sentence
-            </button>
-            <button
-              onPointerDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                appendLastSentences(2)
-              }}
-              className="px-4 py-1.5 text-xs font-bold text-purple-200 bg-purple-900/40 border border-purple-400/40 rounded-lg hover:bg-purple-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
-            >
-              + Add Last 2 Sentences
-            </button>
-            <button
-              onPointerDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                appendLastSentences(3)
-              }}
-              className="px-4 py-1.5 text-xs font-bold text-purple-200 bg-purple-900/40 border border-purple-400/40 rounded-lg hover:bg-purple-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
-            >
-              + Add Last 3 Sentences
-            </button>
-          </div>
-        )} */}
-        {/* --- ADD THIS NEW BLOCK FOR THE LIVE TRANSCRIPTION BUTTONS --- */}
-        {/* --- ADD THIS NEW BLOCK FOR THE LIVE TRANSCRIPTION BUTTONS --- */}
         {(isLiveTranscribing ||
           messages.some((msg) => msg.content?.includes('[Live System Audio]'))) && (
           <div className="w-[700px] mt-2 flex flex-wrap justify-end gap-2 animate-fade-in-up">
             <button
-              onPointerDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                handleContextualAction('answer')
-              }}
-              className="px-3 py-1.5 text-xs font-bold text-green-200 bg-green-900/40 border border-green-400/40 rounded-lg hover:bg-green-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
+              onClick={() => handleContextualAction('summary')}
+              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs font-semibold rounded-md border border-gray-600 transition-colors"
             >
-              💡 Quick Answer
-            </button>
-            {/* --- NEW DETAILED ANSWER BUTTON --- */}
-            <button
-              onPointerDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                handleContextualAction('detailed')
-              }}
-              className="px-3 py-1.5 text-xs font-bold text-cyan-200 bg-cyan-900/40 border border-cyan-400/40 rounded-lg hover:bg-cyan-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
-            >
-              🧠 Detailed Answer
-            </button>
-            {/* ---------------------------------- */}
-            <button
-              onPointerDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                handleContextualAction('summary')
-              }}
-              className="px-3 py-1.5 text-xs font-bold text-blue-200 bg-blue-900/40 border border-blue-400/40 rounded-lg hover:bg-blue-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
-            >
-              ✂️ Summary
+              📝 Summarize Question
             </button>
             <button
-              onPointerDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                handleContextualAction('recap')
-              }}
-              className="px-3 py-1.5 text-xs font-bold text-purple-200 bg-purple-900/40 border border-purple-400/40 rounded-lg hover:bg-purple-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
+              onClick={() => handleContextualAction('quick')}
+              className="px-3 py-1.5 bg-blue-900/50 hover:bg-blue-800 text-blue-200 text-xs font-semibold rounded-md border border-blue-700 transition-colors"
             >
-              📝 Recap
+              ⚡ Quick Answer
             </button>
             <button
-              onPointerDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                handleContextualAction('followup')
-              }}
-              className="px-3 py-1.5 text-xs font-bold text-orange-200 bg-orange-900/40 border border-orange-400/40 rounded-lg hover:bg-orange-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
+              onClick={() => handleContextualAction('design')}
+              className="px-3 py-1.5 bg-purple-900/50 hover:bg-purple-800 text-purple-200 text-xs font-semibold rounded-md border border-purple-700 transition-colors"
             >
-              ❓ Follow-up
+              🏗️ System Design
             </button>
             <button
-              onPointerDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                handleContextualAction('stepbystep')
-              }}
-              className="px-3 py-1.5 text-xs font-bold text-amber-200 bg-amber-900/40 border border-amber-400/40 rounded-lg hover:bg-amber-600 transition-colors cursor-pointer backdrop-blur-md shadow-lg"
+              onClick={() => handleContextualAction('coding')}
+              className="px-3 py-1.5 bg-indigo-900/50 hover:bg-indigo-800 text-indigo-200 text-xs font-semibold rounded-md border border-indigo-700 transition-colors"
             >
-              🪜 Step-by-Step
+              💻 Code Deep Dive
             </button>
             <button
-              onPointerDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                endMeeting()
-              }}
-              disabled={isSaving}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors backdrop-blur-md shadow-lg border ${
-                isSaving
-                  ? 'text-gray-300 bg-gray-700/70 border-gray-500/60 cursor-not-allowed'
-                  : 'text-red-100 bg-red-900/50 border-red-400/50 hover:bg-red-600 cursor-pointer'
-              }`}
+              onClick={() => handleContextualAction('followup')}
+              className="px-3 py-1.5 bg-orange-900/50 hover:bg-orange-800 text-orange-200 text-xs font-semibold rounded-md border border-orange-700 transition-colors"
             >
-              {isSaving ? 'Saving transcript...' : 'Stop & Save Meeting'}
+              ❓ Follow Up Question
             </button>
+            {/* <button
+              onClick={() => handleContextualAction('career')}
+              className="px-3 py-1.5 bg-emerald-900/50 hover:bg-emerald-800 text-emerald-200 text-xs font-semibold rounded-md border border-emerald-700 transition-colors"
+            >
+              💼 Career / Project
+            </button> */}
           </div>
         )}
         {pendingCommand !== null && (
@@ -1412,7 +1448,7 @@ function App() {
               !isBackendReady
                 ? 'Connecting to AI Engine...'
                 : isLiveTranscribing
-                  ? '🔴 Live System Capturing... use Stop & Save Meeting'
+                  ? '🔴 Live System Capturing... type /exit to save and quit'
                   : isListening
                     ? 'Listening to system audio...'
                     : isRecording
@@ -1496,13 +1532,20 @@ function App() {
               </div>
             )}
 
-            <button
+            {/* <button
               onClick={() => setShowVisionMenu(!showVisionMenu)}
               onPointerDown={(e) => e.stopPropagation()}
               className={`text-gray-500 hover:text-green-400 transition-colors p-2 cursor-pointer font-bold ${showVisionMenu ? 'text-green-400' : ''}`}
-              // title="Vision Menu"
             >
               👁️
+            </button> */}
+            <button
+              onClick={() => setShowSettings(true)}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="text-gray-400 hover:text-white transition-colors p-2 cursor-pointer font-bold"
+              title="Edit Core Tech Stack"
+            >
+              ⚙️
             </button>
           </div>
         </div>

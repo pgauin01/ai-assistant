@@ -1,6 +1,6 @@
 import { app, BrowserWindow, globalShortcut, ipcMain } from 'electron'
 import { existsSync } from 'fs'
-import { dirname, join } from 'path'
+import path, { dirname, join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn } from 'child_process'
 import net from 'net'
@@ -349,6 +349,22 @@ app.whenReady().then(() => {
     const nx = Math.round(x + Number(dx || 0))
     const ny = Math.round(y + Number(dy || 0))
     win.setPosition(nx, ny)
+  })
+
+  ipcMain.on('save-and-exit', (event, markdownContent) => {
+    try {
+      const documentsPath = app.getPath('documents')
+      const dateStr = new Date().toISOString().replace(/[:.]/g, '-')
+      const fileName = `Interview_Transcript_${dateStr}.md`
+      const filePath = path.join(documentsPath, fileName)
+
+      fs.writeFileSync(filePath, markdownContent, 'utf-8')
+      console.log(`Saved meeting to: ${filePath}`)
+    } catch (error) {
+      console.error('Failed to save meeting transcript:', error)
+    } finally {
+      app.quit()
+    }
   })
 
   electronApp.setAppUserModelId('com.electron')
