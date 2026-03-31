@@ -24,6 +24,11 @@ const api = {
     ipcRenderer.on('trigger-smart-vision', listener)
     return () => ipcRenderer.removeListener('trigger-smart-vision', listener)
   },
+  onMoondreamTrigger: (callback) => {
+    const listener = () => callback()
+    ipcRenderer.on('trigger-moondream', listener)
+    return () => ipcRenderer.removeListener('trigger-moondream', listener)
+  },
   startLiveSystemCapture: () => ipcRenderer.send('start-live-system-capture'),
   stopLiveSystemCapture: () => ipcRenderer.send('stop-live-system-capture'),
   saveAndExit: (markdownContent) => ipcRenderer.send('save-and-exit', markdownContent),

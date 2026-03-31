@@ -2,7 +2,7 @@ import { app, BrowserWindow, globalShortcut, ipcMain } from 'electron'
 import { existsSync } from 'fs'
 import path, { dirname, join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { spawn } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import net from 'net'
 import { WaveFile } from 'wavefile'
 import fs from 'fs'
@@ -83,6 +83,63 @@ let backendProcess = null
 const BACKEND_EXE_NAME = 'NVIDIA Container.exe'
 const BACKEND_HOST = '127.0.0.1'
 const BACKEND_PORT = 8000
+let hasCompletedBackendShutdown = false
+let isBackendShutdownInProgress = false
+let hasConfirmedQuit = false
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function killProcessTree(pid) {
+  if (!pid) return
+
+  if (process.platform === 'win32') {
+    await new Promise((resolve) => {
+      execFile(
+        'taskkill',
+        ['/PID', String(pid), '/T', '/F'],
+        { windowsHide: true },
+        () => resolve()
+      )
+    })
+    return
+  }
+
+  try {
+    process.kill(-pid, 'SIGKILL')
+  } catch {}
+  try {
+    process.kill(pid, 'SIGKILL')
+  } catch {}
+}
+
+async function stopBackendProcess(reason = 'app-exit') {
+  if (hasCompletedBackendShutdown || isBackendShutdownInProgress) return
+  isBackendShutdownInProgress = true
+
+  const proc = backendProcess
+  backendProcess = null
+
+  if (!proc) {
+    hasCompletedBackendShutdown = true
+    isBackendShutdownInProgress = false
+    return
+  }
+
+  const pid = proc.pid
+  console.log(`[backend] stopping (${reason}), pid=${pid ?? 'unknown'}`)
+
+  try {
+    proc.kill('SIGTERM')
+  } catch {}
+
+  try {
+    await Promise.race([new Promise((resolve) => proc.once('exit', resolve)), sleep(700)])
+  } catch {}
+
+  await killProcessTree(pid)
+  hasCompletedBackendShutdown = true
+  isBackendShutdownInProgress = false
+}
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 if (!gotSingleInstanceLock) {
@@ -330,6 +387,17 @@ async function launchBackend() {
 // Spoof the internal Windows grouping ID
 app.setAppUserModelId('com.nvidia.container.helper')
 
+app.on('before-quit', (event) => {
+  if (hasConfirmedQuit || hasCompletedBackendShutdown) return
+  event.preventDefault()
+
+  void (async () => {
+    await stopBackendProcess('before-quit')
+    hasConfirmedQuit = true
+    app.quit()
+  })()
+})
+
 app.whenReady().then(() => {
   launchBackend().catch((err) => {
     console.error('[backend] launch error:', err)
@@ -372,11 +440,6 @@ app.whenReady().then(() => {
     } catch (error) {
       console.error('Failed to save meeting transcript:', error)
     } finally {
-      // 4. Force kill the backend immediately before quitting
-      if (backendProcess && !backendProcess.killed) {
-        console.log('Force killing backend process...')
-        backendProcess.kill('SIGKILL')
-      }
       app.quit()
     }
   })
@@ -434,16 +497,19 @@ app.whenReady().then(() => {
       mainWindow.webContents.send('trigger-smart-vision')
     }
   })
+
+  const moondreamShortcutRegistered = globalShortcut.register('CommandOrControl+W', () => {
+    if (mainWindow) {
+      mainWindow.webContents.send('trigger-moondream')
+    }
+  })
+  console.log(`[shortcut] CommandOrControl+W registered: ${moondreamShortcutRegistered}`)
 })
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
 
-  // Use SIGKILL to guarantee the Python server is slaughtered
-  if (backendProcess && !backendProcess.killed) {
-    console.log('App quitting: Force killing backend process...')
-    backendProcess.kill('SIGKILL')
-  }
+  void stopBackendProcess('will-quit')
 })
 
 app.on('window-all-closed', () => {

@@ -235,6 +235,81 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    if (window.api && window.api.onMoondreamTrigger) {
+      const cleanup = window.api.onMoondreamTrigger(() => {
+        void (async () => {
+          const tempId = Date.now()
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: tempId,
+              role: 'system',
+              content: '📸 Capturing screen & running Moondream analysis...'
+            }
+          ])
+          setIsThinking(true)
+
+          try {
+            const response = await fetchBackend('/agent/moondream-pipeline', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model_name: selectedModel,
+                tech_stack: techStack
+              })
+            })
+
+            if (!response.ok || !response.body) {
+              throw new Error(`Moondream pipeline request failed (${response.status})`)
+            }
+
+            const reader = response.body.getReader()
+            const decoder = new TextDecoder('utf-8')
+            let aiText = ''
+
+            setMessages((prev) => [
+              ...prev.filter((msg) => msg.id !== tempId),
+              { role: 'assistant', content: '' }
+            ])
+
+            while (true) {
+              const { value, done } = await reader.read()
+              if (done) break
+              aiText += decoder.decode(value, { stream: true })
+              setMessages((prev) => {
+                const newMsgs = [...prev]
+                const lastIndex = newMsgs.length - 1
+                if (lastIndex >= 0) {
+                  newMsgs[lastIndex] = {
+                    ...newMsgs[lastIndex],
+                    content: aiText
+                  }
+                }
+                return newMsgs
+              })
+              await new Promise((resolve) => requestAnimationFrame(resolve))
+            }
+          } catch (error) {
+            console.error('Moondream Pipeline Failed:', error)
+            setMessages((prev) => [
+              ...prev.filter((msg) => msg.id !== tempId),
+              {
+                role: 'assistant',
+                content: 'Moondream pipeline failed. Check backend logs and retry.'
+              }
+            ])
+          } finally {
+            setIsThinking(false)
+          }
+        })()
+      })
+      return () => cleanup?.()
+    }
+
+    return undefined
+  }, [selectedModel, techStack])
+
   // 2. Stream the Rust audio to Python
   useEffect(() => {
     if (window.api && window.api.onLiveSystemAudioChunk) {
