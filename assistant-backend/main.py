@@ -540,21 +540,22 @@ async def execute_command(command: UserCommand):
         return StreamingResponse(stream_err(), media_type="text/plain")
 
     # --- STREAM TO REACT ---
-    async def generate_response():
+    def generate_response():
         try:
             for chunk in llm.stream(formatted_messages):
                 if chunk.content:
-                    yield chunk.content
+                    yield chunk.content.encode('utf-8')
         except Exception as error:
-            yield f"\n\nError generating response: {error}"
+            yield f"\n\nError generating response: {error}".encode("utf-8")
 
     return StreamingResponse(
         generate_response(), 
-        media_type="text/plain", 
+        media_type="text/plain; charset=utf-8",
         headers={
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
+            "X-Accel-Buffering": "no",
+            "X-Content-Type-Options": "nosniff"
         }
     )
 
@@ -1197,7 +1198,7 @@ async def confirm_and_execute(data: dict):
     prompt_template, temperature = mode_router.get(mode, mode_router["explain"])
     prompt = prompt_template.format(command=command)
 
-    async def generate_response():
+    def generate_response():
         try:
             with requests.post(
                 f"{OLLAMA_BASE_URL}/api/generate",
@@ -1227,11 +1228,12 @@ async def confirm_and_execute(data: dict):
 
     return StreamingResponse(
         generate_response(), 
-        media_type="text/plain",
+        media_type="text/plain; charset=utf-8",
         headers={
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
+            "X-Accel-Buffering": "no",
+            "X-Content-Type-Options": "nosniff"
         }
     )
 

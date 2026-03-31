@@ -8,6 +8,7 @@ const SLASH_COMMANDS = [
   { id: 'explain', icon: '📖', label: 'Explain', desc: 'Deep technical explanation' },
   { id: 'fix', icon: '🛠️', label: 'Fix', desc: 'Fix and explain broken code' },
   { id: 'create', icon: '✨', label: 'Create', desc: 'Write a production-ready program' },
+  { id: 'stack', icon: '🧱', label: 'Stack', desc: 'Configure core tech stack' },
   { id: 'clear', icon: '🗑️', label: 'Clear', desc: 'Clear the chat history' },
   // { id: 'system', icon: '🎧', label: 'Wiretap', desc: 'Listen to system audio (10s)' },
   { id: 'exit', icon: '🚪', label: 'Exit', desc: 'Save transcript and close app' },
@@ -443,14 +444,16 @@ Live Transcript:
       case 'coding':
         displayCommand = 'Coding Deep Dive'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a Senior-level ALGORITHM/CODING solution for the implicit question in the transcript.
+Task: Provide a Senior-level technical solution for the coding question in the transcript.
 Rules:
-1. Format EXACTLY with these headings:
-   ### 1. Optimal Approach
+1. ZERO IMPORTS OR LIBRARIES. You MUST solve the problem using strictly vanilla, built-in language features (e.g., no multiprocessing, collections, itertools, math, etc.).
+2. Do NOT create a separate "Line-by-Line Narrative" section. Instead, embed the narrative DIRECTLY inside the code block as highly detailed inline comments explaining the "Why" and "How" for the interviewer.
+3. You MUST include a distinct "Example Usage" section at the bottom of the code block demonstrating how to call the function and print the result.
+4. Format EXACTLY with these headings:
+   ### 1. Optimal Approach (The "High-Level" logic)
    ### 2. Time & Space Complexity
-   ### 3. Edge Cases
-   ### 4. Code Implementation
-2. NO chatbot fluff. NO introductory sentences.
+   ### 3. Code Implementation (With embedded narrative comments)
+5. NO chatbot fluff. NO introductory sentences.
 
 Live Transcript:
 "${rawText}"`
@@ -572,6 +575,9 @@ Live Transcript:
           }
           return newMessages
         })
+
+        // Give Chromium a paint opportunity between streamed chunks in production builds.
+        await new Promise((resolve) => requestAnimationFrame(resolve))
       }
     } catch (error) {
       setMessages((prev) => [
@@ -753,6 +759,11 @@ Live Transcript:
     setShowSlashMenu(false)
 
     // --- NEW: Handle standalone commands that don't need text prompts ---
+    if (commandId === 'stack') {
+      setShowSettings(true)
+      setInput('')
+      return
+    }
     if (commandId === 'clear' || commandId === 'cl') {
       setMessages([])
       setInput('')
@@ -1160,6 +1171,9 @@ Live Transcript:
           }
           return newMessages
         })
+
+        // Give Chromium a paint opportunity between streamed chunks in production builds.
+        await new Promise((resolve) => requestAnimationFrame(resolve))
       }
     } catch (err) {
       setMessages((prev) => [
@@ -1394,10 +1408,12 @@ Live Transcript:
           {/* ----------------------------------- */}
           <button
             type="button"
-            onPointerDown={startRecording}
-            onPointerUp={stopRecording}
-            onPointerCancel={stopRecording}
-            onPointerLeave={stopRecording}
+            onMouseDown={startRecording}
+            onMouseUp={stopRecording}
+            onMouseLeave={stopRecording}
+            onTouchStart={startRecording}
+            onTouchEnd={stopRecording}
+            onTouchCancel={stopRecording}
             disabled={isThinking}
             className={`absolute left-3 top-1/2 -translate-y-1/2 z-20 rounded-xl p-2 border shadow-lg transition-colors ${
               isRecording
@@ -1574,14 +1590,6 @@ Live Transcript:
             >
               👁️
             </button> */}
-            <button
-              onClick={() => setShowSettings(true)}
-              onPointerDown={(e) => e.stopPropagation()}
-              className="text-gray-400 hover:text-white transition-colors p-2 cursor-pointer font-bold"
-              title="Edit Core Tech Stack"
-            >
-              ⚙️
-            </button>
           </div>
         </div>
         {isListening && (
