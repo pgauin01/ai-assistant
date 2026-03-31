@@ -10,6 +10,7 @@ const SLASH_COMMANDS = [
   { id: 'create', icon: '✨', label: 'Create', desc: 'Write a production-ready program' },
   { id: 'clear', icon: '🗑️', label: 'Clear', desc: 'Clear the chat history' },
   // { id: 'system', icon: '🎧', label: 'Wiretap', desc: 'Listen to system audio (10s)' },
+  { id: 'exit', icon: '🚪', label: 'Exit', desc: 'Save transcript and close app' },
   // --- NEW: Z-Macro Commands for fast testing ---
   { id: 'z-hustlebot', icon: '🤖', label: 'HustleBot', desc: 'tell me about hustle bot' },
   { id: 'z-shadowos', icon: '🧠', label: 'Shadow OS', desc: 'tell me about shadow os' },
@@ -79,6 +80,7 @@ function App() {
   const [techStack, setTechStack] = useState(
     () => localStorage.getItem('userTechStack') || DEFAULT_STACK
   )
+  const [selectedModel, setSelectedModel] = useState('qwen2.5-coder:3b')
   const [showSettings, setShowSettings] = useState(false)
 
   // Save to local storage whenever it changes
@@ -467,14 +469,23 @@ Live Transcript:
         break
 
       // 5. CAREER / RESUME (Triggering the RAG backend)
-      case 'career':
-        displayCommand = 'Career Experience'
-        // This stays simple because main.py catches the tag and applies the CAREER_AGENT_PROMPT
-        augmentedPrompt = `[Quick Command: CAREER]\nQuestion:\n\n${rawText}`
-        break
+      // 5. STRATEGY, METRICS & PRODUCT ANSWER
+      case 'strategy':
+        displayCommand = 'Strategy & Metrics'
+        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
+Task: Provide a Senior-level strategic breakdown for the product, metrics, or evaluation question asked in the transcript.
+Rules:
+1. Focus heavily on telemetry, explicit vs implicit signals, user behavior, and edge cases.
+2. Format EXACTLY with these headings:
+   ### 1. Core Strategy (How to approach the problem)
+   ### 2. Explicit Metrics (Direct user feedback to track)
+   ### 3. Implicit Metrics (Behavioral signals and telemetry to track)
+   ### 4. Edge Cases & Risks
+3. NO chatbot fluff. NO introductory sentences. NO code snippets.
 
-      default:
-        return
+Live Transcript:
+"${rawText}"`
+        break
     }
 
     // 4. Send the command to the AI
@@ -516,7 +527,7 @@ Live Transcript:
 
     try {
       const backendMessages = [...messages, { role: 'user', content: payloadText }]
-      const MAX_CONTEXT_MESSAGES = 6
+      const MAX_CONTEXT_MESSAGES = 10
       const rollingContextMessages = backendMessages.slice(-MAX_CONTEXT_MESSAGES)
 
       const res = await fetch('http://127.0.0.1:8000/agent/execute', {
@@ -525,7 +536,8 @@ Live Transcript:
         body: JSON.stringify({
           text: payloadText,
           messages: rollingContextMessages,
-          tech_stack: techStack
+          tech_stack: techStack,
+          model_name: selectedModel
         })
       })
 
@@ -744,6 +756,10 @@ Live Transcript:
     if (commandId === 'clear' || commandId === 'cl') {
       setMessages([])
       setInput('')
+      return
+    }
+    if (commandId === 'exit') {
+      await sendTextMessage('/exit') // This triggers the exit logic the agent built!
       return
     }
 
@@ -1299,6 +1315,12 @@ Live Transcript:
               💻 Code Deep Dive
             </button>
             <button
+              onClick={() => handleContextualAction('strategy')}
+              className="px-3 py-1.5 bg-emerald-900/50 hover:bg-emerald-800 text-emerald-200 text-xs font-semibold rounded-md border border-emerald-700 transition-colors"
+            >
+              📊 Strategy & Metrics
+            </button>
+            <button
               onClick={() => handleContextualAction('followup')}
               className="px-3 py-1.5 bg-orange-900/50 hover:bg-orange-800 text-orange-200 text-xs font-semibold rounded-md border border-orange-700 transition-colors"
             >
@@ -1326,6 +1348,19 @@ Live Transcript:
             </button>
           </div>
         )}
+        <div className="w-[700px] mt-2 flex items-center gap-2">
+          {/* ?<label className="text-xs text-gray-400 font-semibold">🧠 Model:</label> */}
+          <select
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            className="bg-gray-800 text-gray-200 text-xs rounded border border-gray-600 px-2 py-1 outline-none focus:border-blue-500"
+          >
+            <option value="qwen2.5-coder:3b">Qwen 2.5 Coder (3B) - Fast</option>
+            <option value="qwen2.5-coder:7b">Qwen 2.5 Coder (7B) - Smart</option>
+            <option value="gemini-3-flash-preview:latest">gemini-3-flash </option>
+            <option value="glm-5:cloud">glm-5</option>
+          </select>
+        </div>
         {/* Input Container */}
         <div className="relative w-[700px] mt-2">
           {/* --- NEW: Backend Booting Banner --- */}
@@ -1555,9 +1590,9 @@ Live Transcript:
           </div>
         )}
 
-        <div className="w-[700px] mt-3 text-right text-xs text-gray-500">
+        {/* <div className="w-[700px] mt-3 text-right text-xs text-gray-500">
           {isRecording ? 'Release mic to send' : 'Press ESC to dismiss'}
-        </div>
+        </div> */}
         {micToast && (
           <div className="w-[700px] mt-2 text-center text-xs text-blue-200 bg-blue-900/40 border border-blue-400/40 rounded-lg px-3 py-2 backdrop-blur-sm">
             {micToast}

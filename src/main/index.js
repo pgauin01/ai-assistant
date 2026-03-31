@@ -354,15 +354,29 @@ app.whenReady().then(() => {
   ipcMain.on('save-and-exit', (event, markdownContent) => {
     try {
       const documentsPath = app.getPath('documents')
+      // 1. Define the new interview directory path
+      const interviewDir = path.join(documentsPath, 'interview')
+
+      // 2. Create the directory if it doesn't exist yet
+      if (!fs.existsSync(interviewDir)) {
+        fs.mkdirSync(interviewDir, { recursive: true })
+      }
+
       const dateStr = new Date().toISOString().replace(/[:.]/g, '-')
       const fileName = `Interview_Transcript_${dateStr}.md`
-      const filePath = path.join(documentsPath, fileName)
+      // 3. Save the file inside the new interview folder
+      const filePath = path.join(interviewDir, fileName)
 
       fs.writeFileSync(filePath, markdownContent, 'utf-8')
       console.log(`Saved meeting to: ${filePath}`)
     } catch (error) {
       console.error('Failed to save meeting transcript:', error)
     } finally {
+      // 4. Force kill the backend immediately before quitting
+      if (backendProcess && !backendProcess.killed) {
+        console.log('Force killing backend process...')
+        backendProcess.kill('SIGKILL')
+      }
       app.quit()
     }
   })
@@ -425,8 +439,10 @@ app.whenReady().then(() => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
 
+  // Use SIGKILL to guarantee the Python server is slaughtered
   if (backendProcess && !backendProcess.killed) {
-    backendProcess.kill()
+    console.log('App quitting: Force killing backend process...')
+    backendProcess.kill('SIGKILL')
   }
 })
 

@@ -347,7 +347,8 @@ class ConversationMessage(BaseModel):
 class UserCommand(BaseModel):
     text: str = ""
     messages: list[ConversationMessage] = Field(default_factory=list)
-    tech_stack: str = "" 
+    tech_stack: str = ""
+    model_name: str = "qwen2.5-coder:3b"
 
 
 class Message(BaseModel):
@@ -369,14 +370,6 @@ class ExportRequest(BaseModel):
     session_id: str
     messages: List[ExportMessage]    
 
-
-llm = ChatOllama(
-    model=OLLAMA_MODEL,
-    temperature=0.0,
-    base_url=OLLAMA_BASE_URL,
-    num_ctx=2048,    
-    num_predict=1500
-)
 
 vision_llm = ChatOllama(
     model="moondream",
@@ -451,6 +444,13 @@ async def health_check():
 
 @app.post("/agent/execute")
 async def execute_command(command: UserCommand):
+    current_model = command.model_name if command.model_name else "qwen2.5-coder:3b"
+    llm = ChatOllama(
+        model=current_model,
+        temperature=0.2,
+        base_url="http://localhost:11434"
+    )
+
     user_text_lower = command.text.lower()
     
     career_triggers = [
@@ -550,7 +550,7 @@ async def execute_command(command: UserCommand):
 
     return StreamingResponse(
         generate_response(), 
-        media_type="text/plain", # <-- Fixed for production Electron builds
+        media_type="text/plain", 
         headers={
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
