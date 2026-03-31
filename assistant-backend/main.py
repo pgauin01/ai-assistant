@@ -188,7 +188,7 @@ class SnippingTool:
         
         # 3. THIN GREEN BAR: outline='#00ff00', width=1
         self.rect = self.canvas.create_rectangle(
-            self.start_x, self.start_y, 1, 1, outline="#3cff00", width=10, fill=""
+            self.start_x, self.start_y, 1, 1, outline="#3cff00", width=5, fill=""
         )
 
     def on_drag(self, event):
@@ -561,6 +561,83 @@ async def execute_command(command: UserCommand):
         generate_response(), 
         media_type="text/plain; charset=utf-8",
         headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "X-Content-Type-Options": "nosniff"
+        }
+    )
+
+@app.post("/agent/moondream-pipeline")
+async def run_moondream_pipeline(command: UserCommand):
+    screenshot = ImageGrab.grab()
+    buffered = BytesIO()
+    screenshot.save(buffered, format="JPEG", quality=80)
+    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+    current_model = command.model_name if command.model_name else "qwen2.5-coder:3b"
+    llm = ChatOllama(
+        model=current_model,
+        temperature=0.1,
+        base_url=OLLAMA_BASE_URL
+    )
+
+    prompt_text = (
+        "Extract all code, text, and architecture details from this image exactly as written. "
+        "Do not summarize."
+    )
+    raw_extraction = ""
+    moondream_result = None
+
+    try:
+        moondream_result = moondream_cloud.query(screenshot, prompt_text)
+        print(f"[MOONDREAM] cloud result type={type(moondream_result)}")
+        print(f"[MOONDREAM] cloud result={moondream_result}")
+        if isinstance(moondream_result, dict):
+            raw_extraction = (moondream_result.get("answer") or "").strip()
+        else:
+            raw_extraction = str(moondream_result).strip()
+    except Exception:
+        vision_msg = HumanMessage(
+            content=[
+                {"type": "text", "text": prompt_text},
+                {"type": "image_url", "image_url": f"data:image/jpeg;base64,{img_str}"}
+            ]
+        )
+        fallback_result = vision_llm.invoke([vision_msg]).content
+        moondream_result = fallback_result
+        print(f"[MOONDREAM] fallback result type={type(moondream_result)}")
+        print(f"[MOONDREAM] fallback result={moondream_result}")
+        raw_extraction = fallback_result.strip() if isinstance(fallback_result, str) else str(fallback_result)
+
+
+    vision_task = f"""
+You are a strict syntax validator.
+Review the following raw text extracted from an image by a vision model.
+Fix OCR typos, syntax errors, and formatting issues.
+Output only the corrected code/text.
+Write also explnation of code concept.
+
+RAW EXTRACTION:
+{raw_extraction}
+""".strip()
+    
+    validator_prompt = VISION_CREATE_PROMPT.format(command=vision_task)
+
+    # Create a generator that yields chunks as the LLM types them
+    async def stream_validated_response():
+        try:
+            for chunk in llm.stream([SystemMessage(content=validator_prompt)]):
+                if chunk.content:
+                    yield chunk.content.encode("utf-8")
+        except Exception as e:
+            yield f"\n\nError in validation stream: {e}".encode("utf-8")
+
+    return StreamingResponse(
+        stream_validated_response(),
+        media_type="application/octet-stream",
+        headers={
+            "Transfer-Encoding": "chunked",
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",

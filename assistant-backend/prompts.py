@@ -93,9 +93,10 @@ Task:
 {command}
 
 CRITICAL RULES:
-1. Write the implementation for the requested feature based on the context.
-2. Detect the programming language accurately for the code block.
-3. You MUST format your response EXACTLY using these markdown headings:
+1.Fix OCR typos, syntax errors, and formatting issues in the provided code or instructions.
+2. Write the implementation for the requested feature based on the context.
+3. Detect the programming language accurately for the code block.
+4. You MUST format your response EXACTLY using these markdown headings:
 
 ### Implementation Strategy
 [Briefly explain the approach and libraries/functions used]
