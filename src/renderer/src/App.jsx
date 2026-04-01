@@ -1485,13 +1485,9 @@ Live Transcript:
             <option value="qwen2.5-coder:3b">Qwen 2.5 Coder (3B)</option>
             <option value="gemini-3-flash-preview:latest">gemini-3-flash </option>
             <option value="phi3.5:latest">Phi3.5 (4B)</option>
-            <option value="hf:meta-llama/Llama-3.1-8B-Instruct">Llama 3.1 (8B) - Generalist</option>
-            <option value="hf:mistralai/Mistral-Nemo-Instruct-2407">
-              Mistral Nemo (12B) - High Context
-            </option>
+            <option value="glm-5:cloud">glm-5</option>
             {/* <option value="deepseek-r1:1.5b"> deepseek-r1 (1.5B)</option> */}
             {/* <option value="qwen2.5-coder:7b">Qwen 2.5 Coder (7B) - Smart</option> */}
-            {/* <option value="glm-5:cloud">glm-5</option> */}
           </select>
         </div>
         {/* Input Container */}
