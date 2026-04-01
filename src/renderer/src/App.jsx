@@ -1424,10 +1424,10 @@ Live Transcript:
               ⚡ Quick Answer
             </button>
             <button
-              onClick={() => handleContextualAction('design')}
-              className="px-3 py-1.5 bg-purple-900/50 hover:bg-purple-800 text-purple-200 text-xs font-semibold rounded-md border border-purple-700 transition-colors"
+              onClick={() => handleContextualAction('concept')}
+              className="px-3 py-1.5 bg-amber-900/50 hover:bg-amber-800 text-amber-200 text-xs font-semibold rounded-md border border-amber-700 transition-colors"
             >
-              🏗️ System Design
+              🧠 Concept Deep Dive
             </button>
             <button
               onClick={() => handleContextualAction('coding')}
@@ -1436,17 +1436,18 @@ Live Transcript:
               💻 Code Deep Dive
             </button>
             <button
+              onClick={() => handleContextualAction('design')}
+              className="px-3 py-1.5 bg-purple-900/50 hover:bg-purple-800 text-purple-200 text-xs font-semibold rounded-md border border-purple-700 transition-colors"
+            >
+              🏗️ System Design
+            </button>
+            <button
               onClick={() => handleContextualAction('strategy')}
               className="px-3 py-1.5 bg-emerald-900/50 hover:bg-emerald-800 text-emerald-200 text-xs font-semibold rounded-md border border-emerald-700 transition-colors"
             >
               📊 Strategy & Metrics
             </button>
-            <button
-              onClick={() => handleContextualAction('concept')}
-              className="px-3 py-1.5 bg-amber-900/50 hover:bg-amber-800 text-amber-200 text-xs font-semibold rounded-md border border-amber-700 transition-colors"
-            >
-              🧠 Concept Deep Dive
-            </button>
+
             <button
               onClick={() => handleContextualAction('followup')}
               className="px-3 py-1.5 bg-orange-900/50 hover:bg-orange-800 text-orange-200 text-xs font-semibold rounded-md border border-orange-700 transition-colors"
@@ -1483,11 +1484,11 @@ Live Transcript:
             className="bg-gray-800 text-gray-200 text-xs rounded border border-gray-600 px-2 py-1 outline-none focus:border-blue-500"
           >
             <option value="qwen2.5-coder:3b">Qwen 2.5 Coder (3B)</option>
-            <option value="gemini-3-flash-preview:latest">gemini-3-flash </option>
-            <option value="phi3.5:latest">Phi3.5 (4B)</option>
-            <option value="glm-5:cloud">glm-5</option>
+            {/* <option value="phi3.5:latest">Phi3.5 (4B)</option> */}
+            {/* <option value="qwen2.5-coder:7b">Qwen 2.5 Coder (7B) </option> */}
+            <option value="gemini-3-flash-preview:latest">gemini-3-flash (cloud) </option>
+            <option value="glm-5:cloud">glm-5 (cloud)</option>
             {/* <option value="deepseek-r1:1.5b"> deepseek-r1 (1.5B)</option> */}
-            {/* <option value="qwen2.5-coder:7b">Qwen 2.5 Coder (7B) - Smart</option> */}
           </select>
         </div>
         {/* Input Container */}
