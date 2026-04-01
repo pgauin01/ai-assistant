@@ -556,10 +556,28 @@ Rules:
 1. Focus heavily on telemetry, explicit vs implicit signals, user behavior, and edge cases.
 2. Format EXACTLY with these headings:
    ### 1. Core Strategy (How to approach the problem)
-   ### 2. Explicit Metrics (Direct user feedback to track)
-   ### 3. Implicit Metrics (Behavioral signals and telemetry to track)
-   ### 4. Edge Cases & Risks
+   ### 2. Edge Cases & Risks
+   ### 3. Explicit Metrics with Definitions (What to track and how to define it)
+   ### 4. Implicit Metrics (Behavioral Proxies)
 3. NO chatbot fluff. NO introductory sentences. NO code snippets.
+
+Live Transcript:
+"${rawText}"`
+        break
+      // 6. TECHNICAL CONCEPT / THEORY (For verbal explanations & comparisons)
+      case 'concept':
+        displayCommand = 'Technical Deep Dive'
+        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
+Task: Provide a Senior-level conceptual breakdown for the technical theory, comparison, or mechanism asked in the transcript. This is a script for the candidate to explain verbally.
+Rules:
+1. Focus on clarity, architectural trade-offs, and demonstrating deep under-the-hood understanding.
+2. Use bullet points for extreme readability.
+3. Format EXACTLY with these headings:
+   ### 1. The Elevator Pitch (A brilliant 1-sentence summary or analogy)
+   ### 2. Core Mechanics (How it actually works under the hood)
+   ### 3. Trade-offs & Decision Matrix (Pros, Cons, and "When to use which")
+   ### 4. Production Example (A concrete real-world scenario)
+4. NO chatbot fluff. NO introductory sentences. NO massive blocks of text.
 
 Live Transcript:
 "${rawText}"`
@@ -1424,6 +1442,12 @@ Live Transcript:
               📊 Strategy & Metrics
             </button>
             <button
+              onClick={() => handleContextualAction('concept')}
+              className="px-3 py-1.5 bg-amber-900/50 hover:bg-amber-800 text-amber-200 text-xs font-semibold rounded-md border border-amber-700 transition-colors"
+            >
+              🧠 Concept Deep Dive
+            </button>
+            <button
               onClick={() => handleContextualAction('followup')}
               className="px-3 py-1.5 bg-orange-900/50 hover:bg-orange-800 text-orange-200 text-xs font-semibold rounded-md border border-orange-700 transition-colors"
             >
@@ -1459,9 +1483,15 @@ Live Transcript:
             className="bg-gray-800 text-gray-200 text-xs rounded border border-gray-600 px-2 py-1 outline-none focus:border-blue-500"
           >
             <option value="qwen2.5-coder:3b">Qwen 2.5 Coder (3B)</option>
-            {/* <option value="qwen2.5-coder:7b">Qwen 2.5 Coder (7B) - Smart</option> */}
             <option value="gemini-3-flash-preview:latest">gemini-3-flash </option>
-            <option value="glm-5:cloud">glm-5</option>
+            <option value="phi3.5:latest">Phi3.5 (4B)</option>
+            <option value="hf:meta-llama/Llama-3.1-8B-Instruct">Llama 3.1 (8B) - Generalist</option>
+            <option value="hf:mistralai/Mistral-Nemo-Instruct-2407">
+              Mistral Nemo (12B) - High Context
+            </option>
+            {/* <option value="deepseek-r1:1.5b"> deepseek-r1 (1.5B)</option> */}
+            {/* <option value="qwen2.5-coder:7b">Qwen 2.5 Coder (7B) - Smart</option> */}
+            {/* <option value="glm-5:cloud">glm-5</option> */}
           </select>
         </div>
         {/* Input Container */}
