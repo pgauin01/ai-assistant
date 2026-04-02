@@ -83,6 +83,7 @@ function App() {
   )
   const [selectedModel, setSelectedModel] = useState('qwen2.5-coder:3b')
   const [showSettings, setShowSettings] = useState(false)
+  const [editableSummary, setEditableSummary] = useState('')
 
   // Save to local storage whenever it changes
   useEffect(() => {
@@ -449,19 +450,25 @@ function App() {
     }
   }
 
+  const sanitizeSummaryText = (text) =>
+    text
+      .trim()
+      .replace(/^["'`\s]+/, '')
+      .replace(/^they\s+want\s+you\s+to\s+/i, '')
+      .replace(/^they\s+are\s+asking\s+how\s+to\s+/i, '')
+      .replace(/^[:\-\s]+/, '')
+      .replace(/["'`]+$/, '')
+      .trim()
+
   const handleContextualAction = async (actionType) => {
-    // --- THE FIX: Reverse the array to find the LATEST live audio message ---
+    const summaryContext = editableSummary.trim()
     const liveMsg = [...messages].reverse().find((m) => m.content?.includes('[Live System Audio]'))
+    const rawText = liveMsg ? liveMsg.content.replace('🎧 **[Live System Audio]:**', '').trim() : ''
+    const activeContext = summaryContext || rawText
+    const activeContextLabel = summaryContext ? 'Editable Summary' : 'Live Transcript'
 
-    if (!liveMsg) {
-      showMicToast('No live audio context found.')
-      return
-    }
-
-    // 2. Extract the raw text
-    const rawText = liveMsg.content.replace('🎧 **[Live System Audio]:**', '').trim()
-    if (!rawText) {
-      showMicToast('Transcript is empty.')
+    if (!activeContext) {
+      showMicToast('No active context found.')
       return
     }
 
@@ -481,8 +488,8 @@ Rules:
 2. DO NOT mention "past projects" unless explicitly stated.
 3. Output exactly 1 sentence starting with "They want you to design..." or "They are asking how to..."
 
-Live Transcript:
-"${rawText}"`
+Active Context (${activeContextLabel}):
+"${activeContext}"`
         break
 
       // 2. QUICK ANSWER (The 5-second Cheat Sheet)
@@ -495,8 +502,8 @@ Rules:
 2. Focus ONLY on core concepts, terminology, or direct syntax.
 3. NO chatbot fluff, NO greetings, NO full paragraphs. I need to read this in 5 seconds.
 
-Live Transcript:
-"${rawText}"`
+Active Context (${activeContextLabel}):
+"${activeContext}"`
         break
 
       case 'design':
@@ -511,8 +518,8 @@ Rules:
    ### 4. Scalability & Bottlenecks
 2. NO chatbot fluff. NO introductory sentences. NO code snippets.
 
-Live Transcript:
-"${rawText}"`
+Active Context (${activeContextLabel}):
+"${activeContext}"`
         break
 
       // 4. CODING DEEP DIVE ANSWER
@@ -530,8 +537,8 @@ Rules:
    ### 3. Code Implementation (with detailed inline comments)
 5. NO chatbot fluff. NO introductory sentences.
 
-Live Transcript:
-"${rawText}"`
+Active Context (${activeContextLabel}):
+"${activeContext}"`
         break
 
       // 4. FOLLOW-UP QUESTION (Sounding like an Architect)
@@ -542,8 +549,8 @@ Task: Based on this interview transcript, generate 2 highly intelligent, senior-
 Strategy: Focus on architectural foresight (e.g., asking about data scale, edge cases, state management, or latency). 
 Rules: Output ONLY the 2 questions. Sound natural and conversational.
 
-Live Transcript:
-"${rawText}"`
+Active Context (${activeContextLabel}):
+"${activeContext}"`
         break
 
       // 5. CAREER / RESUME (Triggering the RAG backend)
@@ -561,8 +568,8 @@ Rules:
    ### 4. Implicit Metrics (Behavioral Proxies)
 3. NO chatbot fluff. NO introductory sentences. NO code snippets.
 
-Live Transcript:
-"${rawText}"`
+Active Context (${activeContextLabel}):
+"${activeContext}"`
         break
       // 6. TECHNICAL CONCEPT / THEORY (For verbal explanations & comparisons)
       case 'concept':
@@ -579,13 +586,13 @@ Rules:
    ### 4. Production Example (A concrete real-world scenario)
 4. NO chatbot fluff. NO introductory sentences. NO massive blocks of text.
 
-Live Transcript:
-"${rawText}"`
+Active Context (${activeContextLabel}):
+"${activeContext}"`
         break
     }
 
     // 4. Send the command to the AI
-    await sendTextMessage(displayCommand, augmentedPrompt)
+    await sendTextMessage(displayCommand, augmentedPrompt, actionType)
   }
 
   const closeOverlay = () => {
@@ -593,7 +600,7 @@ Live Transcript:
     window.api.hideOverlay()
   }
 
-  const sendTextMessage = async (displayCommand, augmentedPrompt = null) => {
+  const sendTextMessage = async (displayCommand, augmentedPrompt = null, actionType = null) => {
     const payloadText = augmentedPrompt || displayCommand
     const text = payloadText.trim()
 
@@ -671,6 +678,13 @@ Live Transcript:
 
         // Give Chromium a paint opportunity between streamed chunks in production builds.
         await new Promise((resolve) => requestAnimationFrame(resolve))
+      }
+
+      if (actionType === 'summary') {
+        const cleanedSummary = sanitizeSummaryText(assistantReply)
+        if (cleanedSummary) {
+          setEditableSummary(cleanedSummary)
+        }
       }
     } catch (error) {
       setMessages((prev) => [
@@ -1294,7 +1308,7 @@ Live Transcript:
   }
 
   return (
-    <div className="w-screen h-screen flex flex-col items-center justify-start pt-20 bg-transparent">
+    <div className="absolute inset-0 h-screen flex flex-col overflow-hidden bg-transparent">
       {/* Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -1320,23 +1334,11 @@ Live Transcript:
         </div>
       )}
       {/* The Widget Wrapper: catches mouse and triggers NATIVE drag */}
-      <div className="flex flex-col items-center pointer-events-auto">
-        {/* Dedicated draggable strip so there's always a real drag target */}
-        <div
-          className="w-[700px] h-8 mb-2 flex items-center justify-center cursor-default"
-          aria-hidden="true"
-          onPointerDown={handleDragHandlePointerDown}
-          onPointerMove={handleDragHandlePointerMove}
-          onPointerUp={handleDragHandlePointerUp}
-          onPointerCancel={handleDragHandlePointerUp}
-        >
-          <div className="h-1.5 w-16 rounded-full bg-gray-400/40" />
-        </div>
-
+      <div className="flex flex-1 min-h-0 flex-col items-center pointer-events-auto overflow-hidden">
         <div
           ref={transcriptRef}
           onPointerDown={(e) => e.stopPropagation()}
-          className="w-[700px] max-h-[480px] overflow-y-auto px-1 pb-2 scrollbar-thin scrollbar-thumb-gray-600"
+          className="w-[700px] flex-1 min-h-0 overflow-y-auto px-1 pb-1 scrollbar-thin scrollbar-thumb-gray-600"
         >
           {messages.map((message, idx) => {
             if (message.role === 'user') {
@@ -1408,91 +1410,115 @@ Live Transcript:
             </div>
           )}
         </div>
-        {(isLiveTranscribing ||
-          messages.some((msg) => msg.content?.includes('[Live System Audio]'))) && (
-          <div className="w-[700px] mt-2 flex flex-wrap justify-end gap-2 animate-fade-in-up">
-            <button
-              onClick={() => handleContextualAction('summary')}
-              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs font-semibold rounded-md border border-gray-600 transition-colors"
-            >
-              📝 Summarize Question
-            </button>
-            <button
-              onClick={() => handleContextualAction('quick')}
-              className="px-3 py-1.5 bg-blue-900/50 hover:bg-blue-800 text-blue-200 text-xs font-semibold rounded-md border border-blue-700 transition-colors"
-            >
-              ⚡ Quick Answer
-            </button>
-            <button
-              onClick={() => handleContextualAction('concept')}
-              className="px-3 py-1.5 bg-amber-900/50 hover:bg-amber-800 text-amber-200 text-xs font-semibold rounded-md border border-amber-700 transition-colors"
-            >
-              🧠 Concept Deep Dive
-            </button>
-            <button
-              onClick={() => handleContextualAction('coding')}
-              className="px-3 py-1.5 bg-indigo-900/50 hover:bg-indigo-800 text-indigo-200 text-xs font-semibold rounded-md border border-indigo-700 transition-colors"
-            >
-              💻 Code Deep Dive
-            </button>
-            <button
-              onClick={() => handleContextualAction('design')}
-              className="px-3 py-1.5 bg-purple-900/50 hover:bg-purple-800 text-purple-200 text-xs font-semibold rounded-md border border-purple-700 transition-colors"
-            >
-              🏗️ System Design
-            </button>
-            <button
-              onClick={() => handleContextualAction('strategy')}
-              className="px-3 py-1.5 bg-emerald-900/50 hover:bg-emerald-800 text-emerald-200 text-xs font-semibold rounded-md border border-emerald-700 transition-colors"
-            >
-              📊 Strategy & Metrics
-            </button>
-
-            <button
-              onClick={() => handleContextualAction('followup')}
-              className="px-3 py-1.5 bg-orange-900/50 hover:bg-orange-800 text-orange-200 text-xs font-semibold rounded-md border border-orange-700 transition-colors"
-            >
-              ❓ Follow Up Question
-            </button>
-            {/* <button
-              onClick={() => handleContextualAction('career')}
-              className="px-3 py-1.5 bg-emerald-900/50 hover:bg-emerald-800 text-emerald-200 text-xs font-semibold rounded-md border border-emerald-700 transition-colors"
-            >
-              💼 Career / Project
-            </button> */}
-          </div>
-        )}
-        {pendingCommand !== null && (
-          <div className="w-[700px] mt-2 flex justify-end gap-3 animate-fade-in-up">
-            <button
-              onPointerDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                cancelVisionCommand()
-              }}
-              className="px-4 py-1.5 text-xs font-bold text-red-200 bg-red-900/40 border border-red-400/40 rounded-lg hover:bg-red-600 transition-colors cursor-default backdrop-blur-md shadow-lg"
-            >
-              ❌ Cancel Vision Command (ESC)
-            </button>
-          </div>
-        )}
-        <div className="w-[700px] mt-2 flex items-center gap-2">
-          {/* ?<label className="text-xs text-gray-400 font-semibold">🧠 Model:</label> */}
-          <select
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            className="bg-gray-800 text-gray-200 text-xs rounded border border-gray-600 px-2 py-1 outline-none focus:border-blue-500"
+        <div className="w-[700px] flex-none shrink-0 space-y-1 pb-1">
+          <div
+            className="w-full h-6 flex items-center justify-center cursor-default"
+            aria-hidden="true"
+            onPointerDown={handleDragHandlePointerDown}
+            onPointerMove={handleDragHandlePointerMove}
+            onPointerUp={handleDragHandlePointerUp}
+            onPointerCancel={handleDragHandlePointerUp}
           >
-            <option value="qwen2.5-coder:3b">Qwen 2.5 Coder (3B)</option>
-            {/* <option value="phi3.5:latest">Phi3.5 (4B)</option> */}
-            {/* <option value="qwen2.5-coder:7b">Qwen 2.5 Coder (7B) </option> */}
-            <option value="gemini-3-flash-preview:latest">gemini-3-flash (cloud) </option>
-            <option value="glm-5:cloud">glm-5 (cloud)</option>
-            {/* <option value="deepseek-r1:1.5b"> deepseek-r1 (1.5B)</option> */}
-          </select>
-        </div>
-        {/* Input Container */}
-        <div className="relative w-[700px] mt-2">
+            <div className="h-1.5 w-16 rounded-full bg-gray-400/40" />
+          </div>
+          {(isLiveTranscribing ||
+            messages.some((msg) => msg.content?.includes('[Live System Audio]')) ||
+            editableSummary.trim().length > 0) && (
+            <div className="w-full flex flex-wrap justify-end gap-2 animate-fade-in-up">
+              <button
+                onClick={() => handleContextualAction('summary')}
+                className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs font-semibold rounded-md border border-gray-600 transition-colors"
+              >
+                📝 Summarize Question
+              </button>
+              <button
+                onClick={() => handleContextualAction('quick')}
+                className="px-3 py-1.5 bg-blue-900/50 hover:bg-blue-800 text-blue-200 text-xs font-semibold rounded-md border border-blue-700 transition-colors"
+              >
+                ⚡ Quick Answer
+              </button>
+              <button
+                onClick={() => handleContextualAction('concept')}
+                className="px-3 py-1.5 bg-amber-900/50 hover:bg-amber-800 text-amber-200 text-xs font-semibold rounded-md border border-amber-700 transition-colors"
+              >
+                🧠 Concept Deep Dive
+              </button>
+              <button
+                onClick={() => handleContextualAction('coding')}
+                className="px-3 py-1.5 bg-indigo-900/50 hover:bg-indigo-800 text-indigo-200 text-xs font-semibold rounded-md border border-indigo-700 transition-colors"
+              >
+                💻 Code Deep Dive
+              </button>
+              <button
+                onClick={() => handleContextualAction('design')}
+                className="px-3 py-1.5 bg-purple-900/50 hover:bg-purple-800 text-purple-200 text-xs font-semibold rounded-md border border-purple-700 transition-colors"
+              >
+                🏗️ System Design
+              </button>
+              <button
+                onClick={() => handleContextualAction('strategy')}
+                className="px-3 py-1.5 bg-emerald-900/50 hover:bg-emerald-800 text-emerald-200 text-xs font-semibold rounded-md border border-emerald-700 transition-colors"
+              >
+                📊 Strategy & Metrics
+              </button>
+              <button
+                onClick={() => handleContextualAction('followup')}
+                className="px-3 py-1.5 bg-orange-900/50 hover:bg-orange-800 text-orange-200 text-xs font-semibold rounded-md border border-orange-700 transition-colors"
+              >
+                ❓ Follow Up Question
+              </button>
+            </div>
+          )}
+          {pendingCommand !== null && (
+            <div className="w-full flex justify-end gap-2 animate-fade-in-up">
+              <button
+                onPointerDown={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  cancelVisionCommand()
+                }}
+                className="px-4 py-1.5 text-xs font-bold text-red-200 bg-red-900/40 border border-red-400/40 rounded-lg hover:bg-red-600 transition-colors cursor-default backdrop-blur-md shadow-lg"
+              >
+                ❌ Cancel Vision Command (ESC)
+              </button>
+            </div>
+          )}
+          <div className="w-full">
+            {editableSummary.trim().length > 0 && (
+              <div className="mb-1 flex justify-end">
+                <button
+                  onClick={() => setEditableSummary('')}
+                  className="px-2 py-1 text-xs font-semibold text-red-200 bg-red-900/40 border border-red-400/40 rounded-md hover:bg-red-700/60 transition-colors"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+            <textarea
+              value={editableSummary}
+              onChange={(e) => setEditableSummary(e.target.value)}
+              rows={2}
+              placeholder="Editable Summary (HITL): review and edit before running deeper actions..."
+              className="w-full max-h-24 resize-y bg-gray-900/60 text-gray-100 border border-gray-700 rounded-xl px-2 py-1.5 text-xs outline-none focus:border-blue-500"
+            />
+          </div>
+          <div className="w-full flex items-center gap-2">
+            {/* ?<label className="text-xs text-gray-400 font-semibold">🧠 Model:</label> */}
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="bg-gray-800 text-gray-200 text-xs rounded border border-gray-600 px-2 py-1 outline-none focus:border-blue-500"
+            >
+              <option value="qwen2.5-coder:3b">Qwen 2.5 Coder (3B)</option>
+              {/* <option value="phi3.5:latest">Phi3.5 (4B)</option> */}
+              {/* <option value="qwen2.5-coder:7b">Qwen 2.5 Coder (7B) </option> */}
+              <option value="gemini-3-flash-preview:latest">gemini-3-flash (cloud) </option>
+              <option value="glm-5:cloud">glm-5 (cloud)</option>
+              {/* <option value="deepseek-r1:1.5b"> deepseek-r1 (1.5B)</option> */}
+            </select>
+          </div>
+          {/* Input Container */}
+          <div className="relative w-full">
           {/* --- NEW: Backend Booting Banner --- */}
           {!isBackendReady && (
             <div className="absolute -top-12 left-0 w-full flex justify-center z-50 animate-pulse">
@@ -1620,10 +1646,10 @@ Live Transcript:
                         : 'Ask your assistant...'
             }
             // --- NEW: Update styling so it looks disabled while booting ---
-            className={`w-full p-4 pl-14 pr-20 text-xl rounded-2xl shadow-2xl backdrop-blur-md outline-none border transition-all font-sans cursor-text
-              ${
-                !isBackendReady || isThinking || isRecording || isListening || isLiveTranscribing
-                  ? 'bg-gray-800/80 text-gray-400 border-blue-500/50 cursor-not-allowed opacity-80'
+            className={`w-full px-3 py-2 pl-12 pr-16 text-base rounded-xl shadow-lg backdrop-blur-md outline-none border transition-all font-sans cursor-text
+               ${
+                 !isBackendReady || isThinking || isRecording || isListening || isLiveTranscribing
+                   ? 'bg-gray-800/80 text-gray-400 border-blue-500/50 cursor-not-allowed opacity-80'
                   : 'bg-gray-900/60 text-gray-100 border-gray-700 focus:border-blue-500 placeholder-gray-500'
               }`}
           />
@@ -1702,21 +1728,22 @@ Live Transcript:
               👁️
             </button> */}
           </div>
-        </div>
-        {isListening && (
-          <div className="w-[700px] mt-2 text-center text-xs text-cyan-200 bg-cyan-900/40 border border-cyan-400/40 rounded-lg px-3 py-2 backdrop-blur-sm animate-pulse">
-            🎧 Listening to system audio...
           </div>
-        )}
+          {isListening && (
+            <div className="w-full text-center text-xs text-cyan-200 bg-cyan-900/40 border border-cyan-400/40 rounded-lg px-3 py-2 backdrop-blur-sm animate-pulse">
+              🎧 Listening to system audio...
+            </div>
+          )}
 
-        {/* <div className="w-[700px] mt-3 text-right text-xs text-gray-500">
-          {isRecording ? 'Release mic to send' : 'Press ESC to dismiss'}
-        </div> */}
-        {micToast && (
-          <div className="w-[700px] mt-2 text-center text-xs text-blue-200 bg-blue-900/40 border border-blue-400/40 rounded-lg px-3 py-2 backdrop-blur-sm">
-            {micToast}
-          </div>
-        )}
+          {/* <div className="w-[700px] mt-3 text-right text-xs text-gray-500">
+            {isRecording ? 'Release mic to send' : 'Press ESC to dismiss'}
+          </div> */}
+          {micToast && (
+            <div className="w-full text-center text-xs text-blue-200 bg-blue-900/40 border border-blue-400/40 rounded-lg px-3 py-2 backdrop-blur-sm">
+              {micToast}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
