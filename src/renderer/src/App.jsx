@@ -83,6 +83,7 @@ function App() {
   )
   const [selectedModel, setSelectedModel] = useState('qwen2.5-coder:3b')
   const [showSettings, setShowSettings] = useState(false)
+  const [editableSummary, setEditableSummary] = useState('')
 
   // Save to local storage whenever it changes
   useEffect(() => {
@@ -450,18 +451,14 @@ function App() {
   }
 
   const handleContextualAction = async (actionType) => {
-    // --- THE FIX: Reverse the array to find the LATEST live audio message ---
+    const summaryContext = editableSummary.trim()
     const liveMsg = [...messages].reverse().find((m) => m.content?.includes('[Live System Audio]'))
+    const rawText = liveMsg ? liveMsg.content.replace('🎧 **[Live System Audio]:**', '').trim() : ''
+    const activeContext = summaryContext || rawText
+    const activeContextLabel = summaryContext ? 'Editable Summary' : 'Live Transcript'
 
-    if (!liveMsg) {
-      showMicToast('No live audio context found.')
-      return
-    }
-
-    // 2. Extract the raw text
-    const rawText = liveMsg.content.replace('🎧 **[Live System Audio]:**', '').trim()
-    if (!rawText) {
-      showMicToast('Transcript is empty.')
+    if (!activeContext) {
+      showMicToast('No active context found.')
       return
     }
 
@@ -481,8 +478,8 @@ Rules:
 2. DO NOT mention "past projects" unless explicitly stated.
 3. Output exactly 1 sentence starting with "They want you to design..." or "They are asking how to..."
 
-Live Transcript:
-"${rawText}"`
+Active Context (${activeContextLabel}):
+"${activeContext}"`
         break
 
       // 2. QUICK ANSWER (The 5-second Cheat Sheet)
@@ -495,8 +492,8 @@ Rules:
 2. Focus ONLY on core concepts, terminology, or direct syntax.
 3. NO chatbot fluff, NO greetings, NO full paragraphs. I need to read this in 5 seconds.
 
-Live Transcript:
-"${rawText}"`
+Active Context (${activeContextLabel}):
+"${activeContext}"`
         break
 
       case 'design':
@@ -506,13 +503,13 @@ Task: Provide a highly comprehensive, Senior-level SYSTEM DESIGN architecture fo
 Rules:
 1. Format EXACTLY with these headings:
    ### 1. High-Level Architecture (Detail core components)
-   ### 2. End-to-End Data Flow
-   ### 3. Database Strategy (Justify SQL vs NoSQL)
-   ### 4. Scalability & Bottlenecks
-2. NO chatbot fluff. NO introductory sentences. NO code snippets.
-
-Live Transcript:
-"${rawText}"`
+   ### 2. Architecture Diagram
+   ### 3. End-to-End Data Flow
+   ### 4. Database Strategy (Justify SQL vs NoSQL)
+   ### 5. Scalability & Bottlenecks
+2. Under "Architecture Diagram", you MUST provide a valid Mermaid.js flowchart (using \`\`\`mermaid ... \`\`\` syntax). Use "flowchart TD".
+3. NO chatbot fluff. NO introductory sentences. NO code snippets EXCEPT for the Mermaid diagram block.
+Transcript:`
         break
 
       // 4. CODING DEEP DIVE ANSWER
@@ -530,8 +527,8 @@ Rules:
    ### 3. Code Implementation (with detailed inline comments)
 5. NO chatbot fluff. NO introductory sentences.
 
-Live Transcript:
-"${rawText}"`
+Active Context (${activeContextLabel}):
+"${activeContext}"`
         break
 
       // 4. FOLLOW-UP QUESTION (Sounding like an Architect)
@@ -542,8 +539,8 @@ Task: Based on this interview transcript, generate 2 highly intelligent, senior-
 Strategy: Focus on architectural foresight (e.g., asking about data scale, edge cases, state management, or latency). 
 Rules: Output ONLY the 2 questions. Sound natural and conversational.
 
-Live Transcript:
-"${rawText}"`
+Active Context (${activeContextLabel}):
+"${activeContext}"`
         break
 
       // 5. CAREER / RESUME (Triggering the RAG backend)
@@ -561,8 +558,8 @@ Rules:
    ### 4. Implicit Metrics (Behavioral Proxies)
 3. NO chatbot fluff. NO introductory sentences. NO code snippets.
 
-Live Transcript:
-"${rawText}"`
+Active Context (${activeContextLabel}):
+"${activeContext}"`
         break
       // 6. TECHNICAL CONCEPT / THEORY (For verbal explanations & comparisons)
       case 'concept':
@@ -579,13 +576,13 @@ Rules:
    ### 4. Production Example (A concrete real-world scenario)
 4. NO chatbot fluff. NO introductory sentences. NO massive blocks of text.
 
-Live Transcript:
-"${rawText}"`
+Active Context (${activeContextLabel}):
+"${activeContext}"`
         break
     }
 
     // 4. Send the command to the AI
-    await sendTextMessage(displayCommand, augmentedPrompt)
+    await sendTextMessage(displayCommand, augmentedPrompt, actionType)
   }
 
   const closeOverlay = () => {
@@ -593,7 +590,17 @@ Live Transcript:
     window.api.hideOverlay()
   }
 
-  const sendTextMessage = async (displayCommand, augmentedPrompt = null) => {
+  const sanitizeSummaryText = (text) =>
+    text
+      .trim()
+      .replace(/^["'`\s]+/, '')
+      .replace(/^they\s+want\s+you\s+to\s+/i, '')
+      .replace(/^they\s+are\s+asking\s+how\s+to\s+/i, '')
+      .replace(/^[:\-\s]+/, '')
+      .replace(/["'`]+$/, '')
+      .trim()
+
+  const sendTextMessage = async (displayCommand, augmentedPrompt = null, actionType = null) => {
     const payloadText = augmentedPrompt || displayCommand
     const text = payloadText.trim()
 
@@ -672,7 +679,14 @@ Live Transcript:
         // Give Chromium a paint opportunity between streamed chunks in production builds.
         await new Promise((resolve) => requestAnimationFrame(resolve))
       }
+      if (actionType === 'summary') {
+        const cleanedSummary = sanitizeSummaryText(assistantReply)
+        if (cleanedSummary) {
+          setEditableSummary(cleanedSummary)
+        }
+      }
     } catch (error) {
+      console.log('Error sending message:', error)
       setMessages((prev) => [
         ...prev,
         {
@@ -1483,12 +1497,21 @@ Live Transcript:
             onChange={(e) => setSelectedModel(e.target.value)}
             className="bg-gray-800 text-gray-200 text-xs rounded border border-gray-600 px-2 py-1 outline-none focus:border-blue-500"
           >
-            <option value="qwen2.5-coder:3b">Qwen 2.5 Coder (3B)</option>
-            {/* <option value="phi3.5:latest">Phi3.5 (4B)</option> */}
-            {/* <option value="qwen2.5-coder:7b">Qwen 2.5 Coder (7B) </option> */}
-            <option value="gemini-3-flash-preview:latest">gemini-3-flash (cloud) </option>
-            <option value="glm-5:cloud">glm-5 (cloud)</option>
-            {/* <option value="deepseek-r1:1.5b"> deepseek-r1 (1.5B)</option> */}
+            <optgroup label="⚡ Local Models (Ollama)">
+              <option value="qwen2.5-coder:3b">Qwen 2.5 Coder (3B)</option>
+            </optgroup>
+            <optgroup label="🌩️ Lightning AI (Cloud)">
+              <option value="lightning:lightning-ai/llama-3.3-70b">Llama 3.3 (70B)</option>
+              <option value="lightning:lightning-ai/DeepSeek-V3.1">DeepSeek V3.1 (164K)</option>
+              <option value="lightning:lightning-ai/gpt-oss-120b">GPT OSS (120B)</option>
+              <option value="lightning:lightning-ai/gpt-oss-20b">GPT OSS (20B)</option>
+              <option value="lightning:google/gemini-3-pro-preview">Gemini 3 Pro-preview</option>
+            </optgroup>
+            <optgroup label="☁️ Ollama Cloud APIs">
+              <option value="gemini-3-flash-preview:latest">Gemini 3 Flash (Cloud)</option>
+              <option value="gpt-oss:20b-cloud">gpt-oss:20b (cloud)</option>
+              <option value="glm-5:cloud">GLM-5 (Cloud)</option>
+            </optgroup>
           </select>
         </div>
         {/* Input Container */}

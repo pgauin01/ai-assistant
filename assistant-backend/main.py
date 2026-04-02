@@ -44,10 +44,17 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from contextlib import asynccontextmanager
 from typing import List
 from datetime import datetime
-
+from langchain_openai import ChatOpenAI
+from dotenv import load_dotenv
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # <--- ADD THIS FIX
 
+load_dotenv()  
+BASE_KEY = os.getenv("BASE_KEY")
+BILLING_WORKSPACE = os.getenv("BILLING_WORKSPACE")
+
+# This is the magic fix: combine them for the Bearer token
+lit_api_key = f"{BASE_KEY}/{BILLING_WORKSPACE}"
 
 
 
@@ -377,7 +384,7 @@ vision_llm = ChatOllama(
     base_url=OLLAMA_BASE_URL,
 )
 
-MOONDREAM_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlfaWQiOiI0NGU2Y2Q1NC02YmJkLTRmZTktYjYxZS1hNDIxYTc1ZjAzZTgiLCJvcmdfaWQiOiJKSmtFczdhQWZCMGw5Rmk3SXNyYkZnRGtnaERyWG40VyIsImlhdCI6MTc3NDIxMTM3MSwidmVyIjoxfQ.nz27rLzkMfT8p7RetApkUWkRpCVNWFRYRvZ6hHlVjWs"
+MOONDREAM_API_KEY =  os.getenv("MOONDREAM_API_KEY")
 moondream_cloud = md.vl(api_key=MOONDREAM_API_KEY)
 
 whisper_model = None
@@ -445,7 +452,21 @@ async def health_check():
 @app.post("/agent/execute")
 async def execute_command(command: UserCommand):
     current_model = command.model_name if command.model_name else "qwen2.5-coder:3b"
-    llm = ChatOllama(
+    if current_model.startswith("lightning:"):
+        # lit_api_key = os.environ.get("LIGHTNING_API_KEY")
+        if not lit_api_key:
+            raise ValueError("LIGHTNING_API_KEY is missing from the .env file.")
+            
+        lit_model = current_model.replace("lightning:", "")
+        llm = ChatOpenAI(
+            model=lit_model,
+            api_key=lit_api_key,
+            base_url="https://lightning.ai/api/v1",
+            temperature=0.2,
+            streaming=True
+        )
+    else:
+        llm = ChatOllama(
         model=current_model,
         temperature=0.2,
         base_url="http://localhost:11434"
@@ -576,7 +597,21 @@ async def run_moondream_pipeline(command: UserCommand):
     img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
     current_model = command.model_name if command.model_name else "qwen2.5-coder:3b"
-    llm = ChatOllama(
+    if current_model.startswith("lightning:"):
+        # lit_api_key = os.environ.get("LIGHTNING_API_KEY")
+        if not lit_api_key:
+            raise ValueError("LIGHTNING_API_KEY is missing")
+            
+        lit_model = current_model.replace("lightning:", "")
+        llm = ChatOpenAI(
+            model=lit_model,
+            api_key=lit_api_key,
+            base_url="https://lightning.ai/api/v1",
+            temperature=0.2,
+            streaming=True
+        )
+    else:
+        llm = ChatOllama(
         model=current_model,
         temperature=0.1,
         base_url=OLLAMA_BASE_URL
