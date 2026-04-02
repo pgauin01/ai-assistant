@@ -1309,6 +1309,16 @@ Active Context (${activeContextLabel}):
 
   return (
     <div className="absolute inset-0 h-screen flex flex-col overflow-hidden bg-transparent">
+      <div
+        className="w-full h-6 flex justify-center items-center shrink-0 pt-2"
+        aria-hidden="true"
+        onPointerDown={handleDragHandlePointerDown}
+        onPointerMove={handleDragHandlePointerMove}
+        onPointerUp={handleDragHandlePointerUp}
+        onPointerCancel={handleDragHandlePointerUp}
+      >
+        <div className="h-1.5 w-16 rounded-full bg-gray-400/40" />
+      </div>
       {/* Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -1411,15 +1421,24 @@ Active Context (${activeContextLabel}):
           )}
         </div>
         <div className="w-[700px] flex-none shrink-0 space-y-1 pb-1">
-          <div
-            className="w-full h-6 flex items-center justify-center cursor-default"
-            aria-hidden="true"
-            onPointerDown={handleDragHandlePointerDown}
-            onPointerMove={handleDragHandlePointerMove}
-            onPointerUp={handleDragHandlePointerUp}
-            onPointerCancel={handleDragHandlePointerUp}
-          >
-            <div className="h-1.5 w-16 rounded-full bg-gray-400/40" />
+          <div className="w-full">
+            {editableSummary.trim().length > 0 && (
+              <div className="mb-1 flex justify-end">
+                <button
+                  onClick={() => setEditableSummary('')}
+                  className="px-2 py-1 text-xs font-semibold text-red-200 bg-red-900/40 border border-red-400/40 rounded-md hover:bg-red-700/60 transition-colors"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+            <textarea
+              value={editableSummary}
+              onChange={(e) => setEditableSummary(e.target.value)}
+              rows={2}
+              placeholder="Editable Summary (HITL): review and edit before running deeper actions..."
+              className="w-full max-h-24 resize-y bg-gray-900/60 text-gray-100 border border-gray-700 rounded-xl px-2 py-1.5 text-xs outline-none focus:border-blue-500"
+            />
           </div>
           {(isLiveTranscribing ||
             messages.some((msg) => msg.content?.includes('[Live System Audio]')) ||
@@ -1483,223 +1502,189 @@ Active Context (${activeContextLabel}):
               </button>
             </div>
           )}
-          <div className="w-full">
-            {editableSummary.trim().length > 0 && (
-              <div className="mb-1 flex justify-end">
-                <button
-                  onClick={() => setEditableSummary('')}
-                  className="px-2 py-1 text-xs font-semibold text-red-200 bg-red-900/40 border border-red-400/40 rounded-md hover:bg-red-700/60 transition-colors"
-                >
-                  Clear
-                </button>
-              </div>
-            )}
-            <textarea
-              value={editableSummary}
-              onChange={(e) => setEditableSummary(e.target.value)}
-              rows={2}
-              placeholder="Editable Summary (HITL): review and edit before running deeper actions..."
-              className="w-full max-h-24 resize-y bg-gray-900/60 text-gray-100 border border-gray-700 rounded-xl px-2 py-1.5 text-xs outline-none focus:border-blue-500"
-            />
-          </div>
-          <div className="w-full flex items-center gap-2">
-            {/* ?<label className="text-xs text-gray-400 font-semibold">🧠 Model:</label> */}
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="bg-gray-800 text-gray-200 text-xs rounded border border-gray-600 px-2 py-1 outline-none focus:border-blue-500"
-            >
-              <option value="qwen2.5-coder:3b">Qwen 2.5 Coder (3B)</option>
-              {/* <option value="phi3.5:latest">Phi3.5 (4B)</option> */}
-              {/* <option value="qwen2.5-coder:7b">Qwen 2.5 Coder (7B) </option> */}
-              <option value="gemini-3-flash-preview:latest">gemini-3-flash (cloud) </option>
-              <option value="glm-5:cloud">glm-5 (cloud)</option>
-              {/* <option value="deepseek-r1:1.5b"> deepseek-r1 (1.5B)</option> */}
-            </select>
-          </div>
           {/* Input Container */}
           <div className="relative w-full">
-          {/* --- NEW: Backend Booting Banner --- */}
-          {!isBackendReady && (
-            <div className="absolute -top-12 left-0 w-full flex justify-center z-50 animate-pulse">
-              <div className="bg-yellow-500/20 border border-yellow-500/50 text-yellow-200 px-4 py-2 rounded-lg text-sm shadow-lg backdrop-blur-md flex items-center gap-2">
-                <svg
-                  className="animate-spin h-4 w-4 text-yellow-200"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                Starting local AI Engine...
-              </div>
-            </div>
-          )}
-          {/* ----------------------------------- */}
-          <button
-            type="button"
-            onClick={toggleRecording}
-            disabled={isThinking}
-            className={`absolute left-3 top-1/2 -translate-y-1/2 z-20 rounded-xl p-2 border shadow-lg transition-colors ${
-              isRecording
-                ? 'bg-red-500/25 text-red-200 border-red-300/70'
-                : 'bg-blue-500/15 text-blue-200 border-blue-300/60 hover:bg-blue-500/25'
-            } ${isThinking ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-            // title="Hold to talk"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              className="w-5 h-5"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <rect x="9" y="3" width="6" height="12" rx="3" />
-              <path d="M5 11a7 7 0 0 0 14 0" />
-              <path d="M12 18v3" />
-            </svg>
-          </button>
-          {/* --- NEW: The Slash Command Dropdown --- */}
-          {showSlashMenu && (
-            <div className="absolute bottom-full left-4 mb-3 max-h-[350px] overflow-y-auto w-72 bg-gray-800/60 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl flex flex-col font-sans animate-fade-in-up z-50 scrollbar-thin scrollbar-thumb-gray-500">
-              {SLASH_COMMANDS.filter((c) => c.id.startsWith(slashFilter)).map((cmd, idx) => (
-                <button
-                  key={cmd.id}
-                  onPointerDown={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    executeSlashCommand(cmd.id)
-                  }}
-                  onMouseEnter={() => setSlashIndex(idx)}
-                  className={`px-4 py-3 text-left transition-colors border-b border-gray-700/50 flex flex-col cursor-pointer ${
-                    slashIndex === idx
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-200 hover:bg-gray-700'
-                  }`}
-                >
-                  <span className="font-bold text-sm flex items-center gap-2">
-                    <span>{cmd.icon}</span> /{cmd.id}
-                  </span>
-                  <span
-                    className={`text-xs mt-1 ${slashIndex === idx ? 'text-blue-200' : 'text-gray-400'}`}
+            {/* --- NEW: Backend Booting Banner --- */}
+            {!isBackendReady && (
+              <div className="absolute -top-12 left-0 w-full flex justify-center z-50 animate-pulse">
+                <div className="bg-yellow-500/20 border border-yellow-500/50 text-yellow-200 px-4 py-2 rounded-lg text-sm shadow-lg backdrop-blur-md flex items-center gap-2">
+                  <svg
+                    className="animate-spin h-4 w-4 text-yellow-200"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
                   >
-                    {cmd.desc}
-                  </span>
-                </button>
-              ))}
-              {SLASH_COMMANDS.filter((c) => c.id.startsWith(slashFilter)).length === 0 && (
-                <div className="px-4 py-3 text-sm text-gray-400 italic">No commands found...</div>
-              )}
-            </div>
-          )}
-          {/* -------------------------------------- */}
-          <input
-            ref={inputRef}
-            type="text"
-            value={pendingCommand !== null ? pendingCommand : inputText}
-            onChange={(e) => {
-              const val = e.target.value
-              if (pendingCommand !== null) {
-                setPendingCommand(val)
-              } else {
-                setInputText(val)
-                setInput(val)
-
-                const match = val.match(/\/([a-zA-Z]*)$/)
-                if (match) {
-                  setShowSlashMenu(true)
-                  setSlashFilter(match[1].toLowerCase())
-                  setSlashIndex(0)
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  Starting local AI Engine...
+                </div>
+              </div>
+            )}
+            {/* ----------------------------------- */}
+            <button
+              type="button"
+              onClick={toggleRecording}
+              disabled={isThinking}
+              className={`absolute left-3 top-1/2 -translate-y-1/2 z-20 rounded-xl p-2 border shadow-lg transition-colors ${
+                isRecording
+                  ? 'bg-red-500/25 text-red-200 border-red-300/70'
+                  : 'bg-blue-500/15 text-blue-200 border-blue-300/60 hover:bg-blue-500/25'
+              } ${isThinking ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              // title="Hold to talk"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                className="w-5 h-5"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <rect x="9" y="3" width="6" height="12" rx="3" />
+                <path d="M5 11a7 7 0 0 0 14 0" />
+                <path d="M12 18v3" />
+              </svg>
+            </button>
+            {/* --- NEW: The Slash Command Dropdown --- */}
+            {showSlashMenu && (
+              <div className="absolute bottom-full left-4 mb-3 max-h-[350px] overflow-y-auto w-72 bg-gray-800/60 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl flex flex-col font-sans animate-fade-in-up z-50 scrollbar-thin scrollbar-thumb-gray-500">
+                {SLASH_COMMANDS.filter((c) => c.id.startsWith(slashFilter)).map((cmd, idx) => (
+                  <button
+                    key={cmd.id}
+                    onPointerDown={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      executeSlashCommand(cmd.id)
+                    }}
+                    onMouseEnter={() => setSlashIndex(idx)}
+                    className={`px-4 py-3 text-left transition-colors border-b border-gray-700/50 flex flex-col cursor-pointer ${
+                      slashIndex === idx
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-200 hover:bg-gray-700'
+                    }`}
+                  >
+                    <span className="font-bold text-sm flex items-center gap-2">
+                      <span>{cmd.icon}</span> /{cmd.id}
+                    </span>
+                    <span
+                      className={`text-xs mt-1 ${slashIndex === idx ? 'text-blue-200' : 'text-gray-400'}`}
+                    >
+                      {cmd.desc}
+                    </span>
+                  </button>
+                ))}
+                {SLASH_COMMANDS.filter((c) => c.id.startsWith(slashFilter)).length === 0 && (
+                  <div className="px-4 py-3 text-sm text-gray-400 italic">No commands found...</div>
+                )}
+              </div>
+            )}
+            {/* -------------------------------------- */}
+            <input
+              ref={inputRef}
+              type="text"
+              value={pendingCommand !== null ? pendingCommand : inputText}
+              onChange={(e) => {
+                const val = e.target.value
+                if (pendingCommand !== null) {
+                  setPendingCommand(val)
                 } else {
-                  setShowSlashMenu(false)
+                  setInputText(val)
+                  setInput(val)
+
+                  const match = val.match(/\/([a-zA-Z]*)$/)
+                  if (match) {
+                    setShowSlashMenu(true)
+                    setSlashFilter(match[1].toLowerCase())
+                    setSlashIndex(0)
+                  } else {
+                    setShowSlashMenu(false)
+                  }
                 }
+              }}
+              onKeyDown={handleKeyDown}
+              // --- NEW: Disable input if backend is not ready ---
+              disabled={!isBackendReady || isThinking || isRecording || isListening}
+              onPointerDown={(e) => e.stopPropagation()}
+              // --- NEW: Update placeholder to show connecting status ---
+              placeholder={
+                !isBackendReady
+                  ? 'Connecting to AI Engine...'
+                  : isLiveTranscribing
+                    ? '🔴 Live System Capturing... type /exit to save and quit'
+                    : isListening
+                      ? 'Listening to system audio...'
+                      : isRecording
+                        ? 'Recording... release to send'
+                        : isThinking
+                          ? 'Thinking...'
+                          : 'Ask your assistant...'
               }
-            }}
-            onKeyDown={handleKeyDown}
-            // --- NEW: Disable input if backend is not ready ---
-            disabled={!isBackendReady || isThinking || isRecording || isListening}
-            onPointerDown={(e) => e.stopPropagation()}
-            // --- NEW: Update placeholder to show connecting status ---
-            placeholder={
-              !isBackendReady
-                ? 'Connecting to AI Engine...'
-                : isLiveTranscribing
-                  ? '🔴 Live System Capturing... type /exit to save and quit'
-                  : isListening
-                    ? 'Listening to system audio...'
-                    : isRecording
-                      ? 'Recording... release to send'
-                      : isThinking
-                        ? 'Thinking...'
-                        : 'Ask your assistant...'
-            }
-            // --- NEW: Update styling so it looks disabled while booting ---
-            className={`w-full px-3 py-2 pl-12 pr-16 text-base rounded-xl shadow-lg backdrop-blur-md outline-none border transition-all font-sans cursor-text
+              // --- NEW: Update styling so it looks disabled while booting ---
+              className={`w-full min-h-[48px] py-3 pl-12 pr-16 text-base rounded-xl shadow-lg backdrop-blur-md outline-none border transition-all font-sans cursor-text
                ${
                  !isBackendReady || isThinking || isRecording || isListening || isLiveTranscribing
                    ? 'bg-gray-800/80 text-gray-400 border-blue-500/50 cursor-not-allowed opacity-80'
-                  : 'bg-gray-900/60 text-gray-100 border-gray-700 focus:border-blue-500 placeholder-gray-500'
-              }`}
-          />
-          {/* Close Button */}
-          <button
-            onClick={closeOverlay}
-            // STOP the drag if you click the close button
-            onPointerDown={(e) => e.stopPropagation()}
-            className="absolute right-4 top-1/2 -translate-y-1/2 z-20 text-gray-500 hover:text-white transition-colors p-2 cursor-pointer"
-          >
-            X
-          </button>
-          <button
-            onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              toggleLiveTranscription()
-            }}
-            disabled={isThinking || isRecording || !isBackendReady || isSaving}
-            className={`absolute right-12 top-1/2 -translate-y-1/2 z-20 p-2 transition-all duration-300 ${
-              isLiveTranscribing
-                ? 'text-red-400 animate-pulse drop-shadow-[0_0_8px_rgba(248,113,113,0.8)]'
-                : 'text-gray-500 hover:text-cyan-400'
-            } ${isThinking || isRecording || isSaving ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-            // title={isLiveTranscribing ? 'Stop Ambient Listening' : 'Start Ambient Listening'}
-          >
-            {isLiveTranscribing ? '🛑' : '🎧'}
-          </button>
-          <div className="absolute right-20 top-1/2 -translate-y-1/2">
-            {showVisionMenu && (
-              <div className="absolute bottom-full right-0 mb-4 w-32 bg-gray-800/60 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl overflow-hidden flex flex-col font-sans animate-fade-in-up">
-                <button
-                  onPointerDown={(e) => {
-                    e.stopPropagation()
-                    handleVisionSelect('explain')
-                  }}
-                  className="px-4 py-3 text-sm text-gray-200 hover:bg-blue-600 hover:text-white text-left transition-colors border-b border-gray-700"
-                >
-                  📖 Explain
-                </button>
-                <button
-                  onPointerDown={(e) => {
-                    e.stopPropagation()
-                    handleVisionSelect('fix')
-                  }}
-                  className="px-4 py-3 text-sm text-gray-200 hover:bg-green-600 hover:text-white text-left transition-colors border-b border-gray-700"
-                >
-                  🛠️ Fix
-                </button>
-                {/* <button
+                   : 'bg-gray-900/60 text-gray-100 border-gray-700 focus:border-blue-500 placeholder-gray-500'
+               }`}
+            />
+            {/* Close Button */}
+            <button
+              onClick={closeOverlay}
+              // STOP the drag if you click the close button
+              onPointerDown={(e) => e.stopPropagation()}
+              className="absolute right-4 top-1/2 -translate-y-1/2 z-20 text-gray-500 hover:text-white transition-colors p-2 cursor-pointer"
+            >
+              X
+            </button>
+            <button
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                toggleLiveTranscription()
+              }}
+              disabled={isThinking || isRecording || !isBackendReady || isSaving}
+              className={`absolute right-12 top-1/2 -translate-y-1/2 z-20 p-2 transition-all duration-300 ${
+                isLiveTranscribing
+                  ? 'text-red-400 animate-pulse drop-shadow-[0_0_8px_rgba(248,113,113,0.8)]'
+                  : 'text-gray-500 hover:text-cyan-400'
+              } ${isThinking || isRecording || isSaving ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              // title={isLiveTranscribing ? 'Stop Ambient Listening' : 'Start Ambient Listening'}
+            >
+              {isLiveTranscribing ? '🛑' : '🎧'}
+            </button>
+            <div className="absolute right-20 top-1/2 -translate-y-1/2">
+              {showVisionMenu && (
+                <div className="absolute bottom-full right-0 mb-4 w-32 bg-gray-800/60 backdrop-blur-xl border border-gray-600 rounded-xl shadow-2xl overflow-hidden flex flex-col font-sans animate-fade-in-up">
+                  <button
+                    onPointerDown={(e) => {
+                      e.stopPropagation()
+                      handleVisionSelect('explain')
+                    }}
+                    className="px-4 py-3 text-sm text-gray-200 hover:bg-blue-600 hover:text-white text-left transition-colors border-b border-gray-700"
+                  >
+                    📖 Explain
+                  </button>
+                  <button
+                    onPointerDown={(e) => {
+                      e.stopPropagation()
+                      handleVisionSelect('fix')
+                    }}
+                    className="px-4 py-3 text-sm text-gray-200 hover:bg-green-600 hover:text-white text-left transition-colors border-b border-gray-700"
+                  >
+                    🛠️ Fix
+                  </button>
+                  {/* <button
                   onPointerDown={(e) => {
                     e.stopPropagation()
                     handleVisionSelect('help')
@@ -1708,26 +1693,56 @@ Active Context (${activeContextLabel}):
                 >
                   ðŸ†˜ Help
                 </button> */}
-                <button
-                  onPointerDown={(e) => {
-                    e.stopPropagation()
-                    handleVisionSelect('create')
-                  }}
-                  className="px-4 py-3 text-sm text-gray-200 hover:bg-purple-600 hover:text-white text-left transition-colors"
-                >
-                  ✨ Create
-                </button>
-              </div>
-            )}
+                  <button
+                    onPointerDown={(e) => {
+                      e.stopPropagation()
+                      handleVisionSelect('create')
+                    }}
+                    className="px-4 py-3 text-sm text-gray-200 hover:bg-purple-600 hover:text-white text-left transition-colors"
+                  >
+                    ✨ Create
+                  </button>
+                </div>
+              )}
 
-            {/* <button
+              {/* <button
               onClick={() => setShowVisionMenu(!showVisionMenu)}
               onPointerDown={(e) => e.stopPropagation()}
               className={`text-gray-500 hover:text-green-400 transition-colors p-2 cursor-pointer font-bold ${showVisionMenu ? 'text-green-400' : ''}`}
             >
               👁️
             </button> */}
+            </div>
           </div>
+          <div className="w-full flex items-center gap-2">
+            {/* ?<label className="text-xs text-gray-400 font-semibold">🧠 Model:</label> */}
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="bg-gray-800 text-gray-200 text-xs rounded border border-gray-600 px-2 py-1 outline-none focus:border-blue-500"
+              // className="w-full bg-gray-900/60 text-gray-200 border border-gray-700 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 shadow-inner cursor-pointer appearance-none"
+            >
+              <optgroup label="⚡ Local Models (Ollama)">
+                <option value="qwen2.5-coder:3b">Qwen 2.5 Coder (3B)</option>
+                <option value="phi3.5:latest">Phi3.5 (4B)</option>
+              </optgroup>
+
+              <optgroup label="🌩️ Lightning AI (Cloud)">
+                <option value="lightning:lightning-ai/gpt-oss-120b">GPT OSS (120B)</option>
+                <option value="lightning:lightning-ai/gpt-oss-20b">GPT OSS (20B)</option>
+                <option value="lightning:lightning-ai/llama-3.3-70b">Llama 3.3 (70B)</option>
+                <option value="lightning:lightning-ai/DeepSeek-V3.1">DeepSeek V3.1 (164K)</option>
+                <option value="lightning:google/gemini-2.5-flash-lite-preview-06-17">
+                  Gemini 2.5 Flash Lite
+                </option>
+              </optgroup>
+
+              <optgroup label="☁️ Ollama Cloud APIs">
+                <option value="gemini-3-flash-preview:latest">Gemini 3 Flash (Cloud)</option>
+                <option value="gpt-oss:20b-cloud">gpt-oss:20b (cloud)</option>
+                <option value="glm-5:cloud">GLM-5 (Cloud)</option>
+              </optgroup>
+            </select>
           </div>
           {isListening && (
             <div className="w-full text-center text-xs text-cyan-200 bg-cyan-900/40 border border-cyan-400/40 rounded-lg px-3 py-2 backdrop-blur-sm animate-pulse">
