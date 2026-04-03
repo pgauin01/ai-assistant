@@ -163,9 +163,11 @@ function App() {
         try {
           const nodes = Array.from(document.querySelectorAll('.mermaid'))
           for (const node of nodes) {
-            const source = (node.textContent || '').trim()
+            const source =
+              (node.getAttribute('data-mermaid-definition') || node.textContent || '').trim()
             const prevSource = node.getAttribute('data-mermaid-source') || ''
             if (source && source !== prevSource) {
+              node.textContent = source
               node.removeAttribute('data-processed')
               node.setAttribute('data-mermaid-source', source)
             }
@@ -486,7 +488,9 @@ function App() {
     const liveMsg = [...messages].reverse().find((m) => m.content?.includes('[Live System Audio]'))
     const rawText = liveMsg ? liveMsg.content.replace('🎧 **[Live System Audio]:**', '').trim() : ''
     const activeContext = summaryContext || rawText
-    const activeContextLabel = summaryContext ? 'Editable Summary' : 'Live Transcript'
+    const activeContextLabel = summaryContext ? 'Clean Summary' : 'Live Transcript'
+
+    console.log('Active Context for Action:', { summaryContext, activeContext, activeContextLabel })
 
     if (!activeContext) {
       showMicToast('No active context found.')
@@ -507,7 +511,7 @@ Task: Extract the core technical question or task from this rambling transcript.
 Rules: 
 1. DO NOT guess the interviewer's intent.
 2. DO NOT mention "past projects" unless explicitly stated.
-3. Output exactly 1 sentence starting with "They want you to design..." or "They are asking how to..."
+3. Output exactly 1 clear sentence describing the core task. DO NOT use conversational filler like "They want you to" or "They are asking". State the requirement directly.
 
 Active Context (${activeContextLabel}):
 "${activeContext}"`
@@ -1449,6 +1453,7 @@ Active Context (${activeContextLabel}):
           className="w-[700px] max-h-[480px] overflow-y-auto px-1 pb-2 scrollbar-thin scrollbar-thumb-gray-600"
         >
           {messages.map((message, idx) => {
+            const rawMermaid = extractRawMermaidBlock(message.content)
             if (message.role === 'user') {
               return (
                 <div key={`message-${idx}`} className="w-full flex justify-end mb-3 cursor-default">
@@ -1465,9 +1470,12 @@ Active Context (${activeContextLabel}):
                 // className="w-full mb-4 p-5 bg-gray-900/95 text-gray-100 rounded-2xl shadow-2xl backdrop-blur-xl border border-gray-700 cursor-text"
                 className="w-full mb-4 p-5 bg-gray-900/60 text-gray-100 rounded-2xl shadow-2xl backdrop-blur-xl border border-gray-700 cursor-default"
               >
-                {extractRawMermaidBlock(message.content) ? (
-                  <div className="mermaid flex justify-center bg-gray-800/50 p-4 rounded-xl my-4 border border-gray-700 shadow-inner">
-                    {extractRawMermaidBlock(message.content)}
+                {rawMermaid ? (
+                  <div
+                    className="mermaid flex justify-center bg-gray-800/50 p-4 rounded-xl my-4 border border-gray-700 shadow-inner"
+                    data-mermaid-definition={rawMermaid}
+                  >
+                    {rawMermaid}
                   </div>
                 ) : (
                   <ReactMarkdown
@@ -1477,9 +1485,13 @@ Active Context (${activeContextLabel}):
 
                         // --- NEW: Intercept Mermaid Blocks ---
                         if (!inline && match && match[1] === 'mermaid') {
+                          const mermaidCode = String(children).replace(/\n$/, '')
                           return (
-                            <div className="mermaid flex justify-center bg-gray-800/50 p-4 rounded-xl my-4 border border-gray-700 shadow-inner">
-                              {String(children).replace(/\n$/, '')}
+                            <div
+                              className="mermaid flex justify-center bg-gray-800/50 p-4 rounded-xl my-4 border border-gray-700 shadow-inner"
+                              data-mermaid-definition={mermaidCode}
+                            >
+                              {mermaidCode}
                             </div>
                           )
                         }
