@@ -163,8 +163,11 @@ function App() {
         try {
           const nodes = Array.from(document.querySelectorAll('.mermaid'))
           for (const node of nodes) {
-            const source =
-              (node.getAttribute('data-mermaid-definition') || node.textContent || '').trim()
+            const source = (
+              node.getAttribute('data-mermaid-definition') ||
+              node.textContent ||
+              ''
+            ).trim()
             const prevSource = node.getAttribute('data-mermaid-source') || ''
             if (source && source !== prevSource) {
               node.textContent = source
@@ -1611,19 +1614,19 @@ Active Context (${activeContextLabel}):
             onChange={(e) => setSelectedModel(e.target.value)}
             className="bg-gray-800 text-gray-200 text-xs rounded border border-gray-600 px-2 py-1 outline-none focus:border-blue-500"
           >
-            <optgroup label="⚡ Local Models (Ollama)">
+            <optgroup label="⚡Local Models (Ollama)">
               <option value="qwen2.5-coder:3b">Qwen 2.5 Coder (3B)</option>
             </optgroup>
-            <optgroup label="🌩️ Lightning AI (Cloud)">
-              <option value="lightning:lightning-ai/llama-3.3-70b">Llama 3.3 (70B)</option>
-              <option value="lightning:lightning-ai/DeepSeek-V3.1">DeepSeek V3.1 (164K)</option>
-              <option value="lightning:lightning-ai/gpt-oss-120b">GPT OSS (120B)</option>
+            <optgroup label="🌩️Lightning AI (Cloud)">
               <option value="lightning:lightning-ai/gpt-oss-20b">GPT OSS (20B)</option>
+              <option value="lightning:lightning-ai/gpt-oss-120b">GPT OSS (120B)</option>
+              <option value="lightning:lightning-ai/llama-3.3-70b">Llama 3.3 (70B)</option>
+              <option value="lightning:lightning-ai/DeepSeek-V3.1">DeepSeek V3.1</option>
               {/* <option value="lightning:google/gemini-3-pro-preview">Gemini 3 Pro-preview</option> */}
             </optgroup>
-            <optgroup label="☁️ Ollama Cloud APIs">
+            <optgroup label="☁️Ollama Cloud APIs">
               <option value="gemini-3-flash-preview:latest">Gemini 3 Flash (Cloud)</option>
-              <option value="gpt-oss:20b-cloud">gpt-oss:20b (cloud)</option>
+              <option value="gpt-oss:20b-cloud">gpt-oss:20b (Cloud)</option>
               <option value="glm-5:cloud">GLM-5 (Cloud)</option>
             </optgroup>
           </select>

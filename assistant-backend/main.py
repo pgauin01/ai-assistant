@@ -2,7 +2,6 @@
 import os
 import tempfile
 import warnings
-import base64
 from io import BytesIO
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
@@ -325,30 +324,45 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
+# Local dev origins for Electron+Vite renderer.
+ALLOWED_ORIGINS = {
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+}
+
+
+def cors_headers_for_request(request: Request) -> dict:
+    origin = request.headers.get("origin")
+    if origin and origin in ALLOWED_ORIGINS:
+        return {"Access-Control-Allow-Origin": origin, "Vary": "Origin"}
+    # Conservative fallback for non-browser/internal clients.
+    return {"Access-Control-Allow-Origin": "*"}
+
+
 # --- NEW: GLOBAL CRASH CATCHER ---
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    # Write the exact error to a text file on your Desktop
-    desktop_path = os.path.join(os.path.expanduser("~"), "Desktop", "vision_crash_log.txt")
-    with open(desktop_path, "w", encoding="utf-8") as f:
-        f.write(f"CRASH OCCURRED ON ROUTE: {request.url.path}\n\n")
-        f.write(traceback.format_exc())
-        
-    print(f"FATAL ERROR CAUGHT: {exc}") # Try to print it too
+    # Never let error logging crash the exception handler itself.
+    try:
+        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop", "vision_crash_log.txt")
+        with open(desktop_path, "w", encoding="utf-8") as f:
+            f.write(f"CRASH OCCURRED ON ROUTE: {request.url.path}\n\n")
+            f.write(traceback.format_exc())
+    except Exception as log_error:
+        print(f"Failed to write crash log: {log_error}")
+
+    print(f"FATAL ERROR CAUGHT: {exc}")  # Keep stdout logging for quick debugging
     return JSONResponse(
         status_code=500,
-        content={"message": "Internal Server Error", "detail": str(exc)}
+        content={"message": "Internal Server Error", "detail": str(exc)},
+        headers=cors_headers_for_request(request),
     )
 
 app.add_middleware(
     CORSMiddleware,
-    # allow_origins=[
-    #     "http://localhost:3000",
-    #     "http://127.0.0.1:3000",
-    #     "http://localhost:5173",
-    #     "http://127.0.0.1:5173",
-    # ],
-    allow_origins=["*"],
+    allow_origins=list(ALLOWED_ORIGINS),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -388,14 +402,8 @@ class ExportRequest(BaseModel):
     messages: List[ExportMessage]    
 
 
-vision_llm = ChatOllama(
-    model="moondream",
-    temperature=0.0,
-    base_url=OLLAMA_BASE_URL,
-)
-
-MOONDREAM_API_KEY =  os.getenv("MOONDREAM_API_KEY")
-moondream_cloud = md.vl(api_key=MOONDREAM_API_KEY)
+def get_moondream_api_key() -> str:
+    return (os.getenv("MOONDREAM_API_KEY") or "").strip().strip('"').strip("'")
 
 whisper_model = None
 
@@ -601,11 +609,11 @@ async def execute_command(command: UserCommand):
 
 @app.post("/agent/moondream-pipeline")
 async def run_moondream_pipeline(command: UserCommand):
-    screenshot = ImageGrab.grab()
-    buffered = BytesIO()
-    screenshot.save(buffered, format="JPEG", quality=80)
-    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-
+    try:
+        screenshot = ImageGrab.grab()
+    except Exception as e:
+        # Return a clear failure instead of an opaque crash so frontend can surface it.
+        raise HTTPException(status_code=500, detail=f"Failed to capture screen: {e}")
     current_model = command.model_name if command.model_name else "qwen2.5-coder:3b"
     if current_model.startswith("lightning:"):
         # lit_api_key = os.environ.get("LIGHTNING_API_KEY")
@@ -632,9 +640,12 @@ async def run_moondream_pipeline(command: UserCommand):
         "Do not summarize."
     )
     raw_extraction = ""
-    moondream_result = None
+    moondream_api_key = get_moondream_api_key()
+    if not moondream_api_key:
+        raise HTTPException(status_code=503, detail="MOONDREAM_API_KEY is missing in backend environment.")
 
     try:
+        moondream_cloud = md.vl(api_key=moondream_api_key)
         moondream_result = moondream_cloud.query(screenshot, prompt_text)
         print(f"[MOONDREAM] cloud result type={type(moondream_result)}")
         print(f"[MOONDREAM] cloud result={moondream_result}")
@@ -642,18 +653,8 @@ async def run_moondream_pipeline(command: UserCommand):
             raw_extraction = (moondream_result.get("answer") or "").strip()
         else:
             raw_extraction = str(moondream_result).strip()
-    except Exception:
-        vision_msg = HumanMessage(
-            content=[
-                {"type": "text", "text": prompt_text},
-                {"type": "image_url", "image_url": f"data:image/jpeg;base64,{img_str}"}
-            ]
-        )
-        fallback_result = vision_llm.invoke([vision_msg]).content
-        moondream_result = fallback_result
-        print(f"[MOONDREAM] fallback result type={type(moondream_result)}")
-        print(f"[MOONDREAM] fallback result={moondream_result}")
-        raw_extraction = fallback_result.strip() if isinstance(fallback_result, str) else str(fallback_result)
+    except Exception as cloud_error:
+        raise HTTPException(status_code=503, detail=f"Moondream cloud query failed: {cloud_error}")
 
 
     vision_task = f"""
@@ -1196,64 +1197,6 @@ async def execute_vision_command(request: ChatRequest):
         print(f"Vision Error: {e}")
         return {"status": "error", "response": str(e)}
 
-
-# clean_code = ""   
-# @app.post("/agent/confirm")
-# async def confirm_and_execute(data: dict):
-#     command = data.get("command", "")
-#     mode = data.get("mode", "").lower()
-
-#     if not command:
-#         async def stream_err():
-#             yield "No command provided"
-#         return StreamingResponse(stream_err(), media_type="text/plain")
-
-#     mode_router = {
-#         "explain": (VISION_EXPLAIN_PROMPT, 0.3),
-#         "fix": (VISION_FIX_PROMPT, 0.1),
-#         "create": (VISION_CREATE_PROMPT, 0.1),
-#         "smart": (VISION_SMART_PROMPT, 0.0),
-#     }
-#     prompt_template, temperature = mode_router.get(mode, mode_router["create"])
-#     prompt = prompt_template.format(command=command)
-
-#     async def generate_response():
-#         try:
-#             with requests.post(
-#                 f"{OLLAMA_BASE_URL}/api/generate",
-#                 json={
-#                     "model": OLLAMA_MODEL,
-#                     "prompt": prompt,
-#                     "stream": True,
-#                     "options": {
-#                         "temperature": temperature,
-#                         "num_predict": 1500
-#                     }
-#                 },
-#                 stream=True
-#             ) as response:
-#                 for line in response.iter_lines():
-#                     if not line:
-#                         continue
-#                     try:
-#                         payload = json.loads(line.decode("utf-8"))
-#                         chunk = payload.get("response", "")
-#                         if chunk:
-#                             yield chunk
-#                     except Exception:
-#                         continue
-#         except Exception as e:
-#             yield f"\n\nError generating response: {e}"
-
-#     return StreamingResponse(
-#         generate_response(), 
-#         media_type="text/event-stream",
-#         headers={
-#             "Cache-Control": "no-cache, no-transform",
-#             "Connection": "keep-alive",
-#             "X-Accel-Buffering": "no"
-#         }
-#     )
 
 @app.post("/agent/confirm")
 async def confirm_and_execute(data: dict):
