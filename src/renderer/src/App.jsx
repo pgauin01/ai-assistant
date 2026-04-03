@@ -143,11 +143,42 @@ function App() {
   // --- NEW: Render Mermaid Diagrams ---
   useEffect(() => {
     mermaid.initialize({
-      startOnLoad: true,
-      theme: 'dark',
+      startOnLoad: false, // Disable auto-load so we control it
+      theme: 'base', // We change this from 'dark' to 'base' to allow full customization
+      themeVariables: {
+        primaryColor: '#1F2937', // Tailwind gray-800 for the node boxes
+        primaryTextColor: '#FFFFFF', // Pure white text inside the boxes!
+        primaryBorderColor: '#3B82F6', // Sleek blue borders (Tailwind blue-500)
+        lineColor: '#9CA3AF', // Light grey for the connecting arrows
+        textColor: '#FFFFFF', // Pure white for any text outside the boxes
+        background: 'transparent', // Keep your app's background
+        fontFamily: 'inherit' // Match your app's font
+      },
       securityLevel: 'loose'
     })
-    mermaid.contentLoaded()
+
+    // Re-render Mermaid blocks when their source text changes (streaming-safe).
+    const timer = setTimeout(
+      async () => {
+        try {
+          const nodes = Array.from(document.querySelectorAll('.mermaid'))
+          for (const node of nodes) {
+            const source = (node.textContent || '').trim()
+            const prevSource = node.getAttribute('data-mermaid-source') || ''
+            if (source && source !== prevSource) {
+              node.removeAttribute('data-processed')
+              node.setAttribute('data-mermaid-source', source)
+            }
+          }
+          await mermaid.run({ nodes })
+        } catch (e) {
+          console.error('Mermaid rendering failed:', e)
+        }
+      },
+      isThinking ? 220 : 80
+    )
+
+    return () => clearTimeout(timer)
   }, [messages, isThinking])
 
   useEffect(() => {
@@ -507,7 +538,13 @@ Rules:
    ### 3. End-to-End Data Flow
    ### 4. Database Strategy (Justify SQL vs NoSQL)
    ### 5. Scalability & Bottlenecks
-2. Under "Architecture Diagram", you MUST provide a valid Mermaid.js flowchart (using \`\`\`mermaid ... \`\`\` syntax). Use "flowchart TD".
+2. Under "Architecture Diagram", you MUST provide a valid Mermaid.js flowchart (using \`\`\`mermaid ... \`\`\` syntax). 
+   - CRITICAL: You MUST wrap the diagram EXACTLY in markdown code blocks like this:
+   \`\`\`mermaid
+   flowchart TD
+   A["Node 1"] --> B["Node 2"]
+   \`\`\`
+   - Use double quotes around all node names to prevent syntax errors.
 3. NO chatbot fluff. NO introductory sentences. NO code snippets EXCEPT for the Mermaid diagram block.
 Transcript:`
         break
@@ -599,6 +636,65 @@ Active Context (${activeContextLabel}):
       .replace(/^[:\-\s]+/, '')
       .replace(/["'`]+$/, '')
       .trim()
+
+  const normalizeMermaidMarkdown = (text) => {
+    if (!text) return text
+    if (/```mermaid/i.test(text)) return text
+
+    const normalized = text.replace(/\r\n/g, '\n')
+    const lines = normalized.split('\n')
+    const mermaidStartPattern =
+      /^\s*(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|journey|gantt|pie|mindmap|timeline|gitGraph)\b/
+
+    const startIndex = lines.findIndex((line) => mermaidStartPattern.test(line))
+    if (startIndex === -1) return text
+
+    let endIndex = lines.length
+    for (let i = startIndex + 1; i < lines.length; i += 1) {
+      if (/^\s*#{1,6}\s/.test(lines[i])) {
+        endIndex = i
+        break
+      }
+    }
+
+    const prefix = lines.slice(0, startIndex).join('\n').trim()
+    const mermaidBlock = lines.slice(startIndex, endIndex).join('\n').trim()
+    const suffix = lines.slice(endIndex).join('\n').trim()
+    const parts = []
+
+    if (prefix) parts.push(prefix)
+    parts.push(`\`\`\`mermaid\n${mermaidBlock}\n\`\`\``)
+    if (suffix) parts.push(suffix)
+
+    return parts.join('\n\n')
+  }
+
+  const extractRawMermaidBlock = (text) => {
+    if (!text) return null
+    if (/```mermaid/i.test(text)) return null
+
+    const normalized = text.replace(/\r\n/g, '\n')
+    const lines = normalized.split('\n')
+    const mermaidStartPattern =
+      /^\s*(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|journey|gantt|pie|mindmap|timeline|gitGraph)\b/
+
+    const startIndex = lines.findIndex((line) => mermaidStartPattern.test(line))
+    if (startIndex === -1) return null
+
+    const nonEmptyPrefix = lines.slice(0, startIndex).filter((line) => line.trim().length > 0)
+    if (nonEmptyPrefix.length > 0) return null
+
+    let endIndex = lines.length
+    for (let i = startIndex + 1; i < lines.length; i += 1) {
+      if (/^\s*#{1,6}\s/.test(lines[i])) {
+        endIndex = i
+        break
+      }
+    }
+
+    const block = lines.slice(startIndex, endIndex).join('\n').trim()
+    return block || null
+  }
 
   const sendTextMessage = async (displayCommand, augmentedPrompt = null, actionType = null) => {
     const payloadText = augmentedPrompt || displayCommand
@@ -1369,49 +1465,55 @@ Active Context (${activeContextLabel}):
                 // className="w-full mb-4 p-5 bg-gray-900/95 text-gray-100 rounded-2xl shadow-2xl backdrop-blur-xl border border-gray-700 cursor-text"
                 className="w-full mb-4 p-5 bg-gray-900/60 text-gray-100 rounded-2xl shadow-2xl backdrop-blur-xl border border-gray-700 cursor-default"
               >
-                <ReactMarkdown
-                  components={{
-                    code({ node, inline, className, children, ...props }) {
-                      const match = /language-(\w+)/.exec(className || '')
+                {extractRawMermaidBlock(message.content) ? (
+                  <div className="mermaid flex justify-center bg-gray-800/50 p-4 rounded-xl my-4 border border-gray-700 shadow-inner">
+                    {extractRawMermaidBlock(message.content)}
+                  </div>
+                ) : (
+                  <ReactMarkdown
+                    components={{
+                      code({ node, inline, className, children, ...props }) {
+                        const match = /language-(\w+)/.exec(className || '')
 
-                      // --- NEW: Intercept Mermaid Blocks ---
-                      if (!inline && match && match[1] === 'mermaid') {
-                        return (
-                          <div className="mermaid flex justify-center bg-gray-800/50 p-4 rounded-xl my-4 border border-gray-700 shadow-inner">
-                            {String(children).replace(/\n$/, '')}
-                          </div>
-                        )
-                      }
-                      // -----------------------------------
+                        // --- NEW: Intercept Mermaid Blocks ---
+                        if (!inline && match && match[1] === 'mermaid') {
+                          return (
+                            <div className="mermaid flex justify-center bg-gray-800/50 p-4 rounded-xl my-4 border border-gray-700 shadow-inner">
+                              {String(children).replace(/\n$/, '')}
+                            </div>
+                          )
+                        }
+                        // -----------------------------------
 
-                      return !inline && match ? (
-                        <div className="rounded-xl overflow-hidden my-4 border border-gray-700 shadow-lg w-full">
-                          <div className="bg-gray-800 px-4 py-1 text-xs text-gray-400 uppercase font-mono border-b border-gray-700 flex justify-between">
-                            <span>{match[1]}</span>
+                        return !inline && match ? (
+                          <div className="rounded-xl overflow-hidden my-4 border border-gray-700 shadow-lg w-full">
+                            <div className="bg-gray-800 px-4 py-1 text-xs text-gray-400 uppercase font-mono border-b border-gray-700 flex justify-between">
+                              <span>{match[1]}</span>
+                            </div>
+                            <SyntaxHighlighter
+                              style={vscDarkPlus}
+                              language={match[1]}
+                              PreTag="div"
+                              customStyle={{ margin: 0, padding: '1rem', background: '#1e1e1e' }}
+                              {...props}
+                            >
+                              {String(children).replace(/\n$/, '')}
+                            </SyntaxHighlighter>
                           </div>
-                          <SyntaxHighlighter
-                            style={vscDarkPlus}
-                            language={match[1]}
-                            PreTag="div"
-                            customStyle={{ margin: 0, padding: '1rem', background: '#1e1e1e' }}
+                        ) : (
+                          <code
+                            className="bg-gray-800 text-blue-300 px-1.5 py-0.5 rounded-md font-mono text-sm"
                             {...props}
                           >
-                            {String(children).replace(/\n$/, '')}
-                          </SyntaxHighlighter>
-                        </div>
-                      ) : (
-                        <code
-                          className="bg-gray-800 text-blue-300 px-1.5 py-0.5 rounded-md font-mono text-sm"
-                          {...props}
-                        >
-                          {children}
-                        </code>
-                      )
-                    }
-                  }}
-                >
-                  {message.content}
-                </ReactMarkdown>
+                            {children}
+                          </code>
+                        )
+                      }
+                    }}
+                  >
+                    {normalizeMermaidMarkdown(message.content)}
+                  </ReactMarkdown>
+                )}
               </div>
             )
           })}
@@ -1505,7 +1607,7 @@ Active Context (${activeContextLabel}):
               <option value="lightning:lightning-ai/DeepSeek-V3.1">DeepSeek V3.1 (164K)</option>
               <option value="lightning:lightning-ai/gpt-oss-120b">GPT OSS (120B)</option>
               <option value="lightning:lightning-ai/gpt-oss-20b">GPT OSS (20B)</option>
-              <option value="lightning:google/gemini-3-pro-preview">Gemini 3 Pro-preview</option>
+              {/* <option value="lightning:google/gemini-3-pro-preview">Gemini 3 Pro-preview</option> */}
             </optgroup>
             <optgroup label="☁️ Ollama Cloud APIs">
               <option value="gemini-3-flash-preview:latest">Gemini 3 Flash (Cloud)</option>

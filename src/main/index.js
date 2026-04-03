@@ -54,7 +54,7 @@ function createWindow() {
   // Hides the window from screen capture and screen sharing.
   mainWindow.setContentProtection(true)
   mainWindow.setIgnoreMouseEvents(true, { forward: true })
-  mainWindow.webContents.openDevTools({ mode: 'detach' })
+  // mainWindow.webContents.openDevTools({ mode: 'detach' })
 
   // Start in "click-through" mode
   mainWindow.setIgnoreMouseEvents(true, { forward: true })

@@ -47,9 +47,19 @@ from datetime import datetime
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 import os
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # <--- ADD THIS FIX
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  
+# Determine the absolute path to the directory containing main.py / .env
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    # Running in production: find the .env file in the PyInstaller temp folder
+    base_path = sys._MEIPASS
+else:
+    # Running in development: find the .env file in the normal directory next to main.py
+    base_path = os.path.dirname(os.path.abspath(__file__))
 
-load_dotenv()  
+env_path = os.path.join(base_path, '.env')
+
+# Force load_dotenv to use the exact path
+load_dotenv(dotenv_path=env_path)
 BASE_KEY = os.getenv("BASE_KEY")
 BILLING_WORKSPACE = os.getenv("BILLING_WORKSPACE")
 
