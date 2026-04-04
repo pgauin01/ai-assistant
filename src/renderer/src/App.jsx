@@ -143,16 +143,32 @@ function App() {
   // --- NEW: Render Mermaid Diagrams ---
   useEffect(() => {
     mermaid.initialize({
-      startOnLoad: false, // Disable auto-load so we control it
-      theme: 'base', // We change this from 'dark' to 'base' to allow full customization
+      startOnLoad: false,
+      theme: 'base',
       themeVariables: {
-        primaryColor: '#1F2937', // Tailwind gray-800 for the node boxes
-        primaryTextColor: '#FFFFFF', // Pure white text inside the boxes!
-        primaryBorderColor: '#3B82F6', // Sleek blue borders (Tailwind blue-500)
-        lineColor: '#9CA3AF', // Light grey for the connecting arrows
-        textColor: '#FFFFFF', // Pure white for any text outside the boxes
-        background: 'transparent', // Keep your app's background
-        fontFamily: 'inherit' // Match your app's font
+        primaryColor: '#1F2937',
+        primaryTextColor: '#FFFFFF',
+        primaryBorderColor: '#3B82F6',
+        lineColor: '#9CA3AF',
+        textColor: '#FFFFFF',
+        background: 'transparent',
+        fontFamily: 'inherit'
+        // (You can remove fontSize from here, it gets ignored anyway)
+      },
+      // 🚀 THE NUCLEAR OPTION: Force font size using direct SVG CSS injection
+      themeCSS: `
+        .node text, .nodeLabel { 
+          font-size: 12px !important; 
+        }
+        .edgeLabel text { 
+          font-size: 12px !important; 
+        }
+      `,
+      flowchart: {
+        htmlLabels: false, // Keep this false!
+        padding: 5,
+        nodeSpacing: 20,
+        rankSpacing: 20
       },
       securityLevel: 'loose'
     })
@@ -537,23 +553,28 @@ Active Context (${activeContextLabel}):
       case 'design':
         displayCommand = 'System Design'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a highly comprehensive, Senior-level SYSTEM DESIGN architecture for the requirement in the transcript.
+Task: Provide a Senior-level SYSTEM DESIGN architecture designed specifically as a SPOKEN INTERVIEW SCRIPT.
 Rules:
-1. Format EXACTLY with these headings:
-   ### 1. High-Level Architecture (Detail core components)
+1. Tone & Style: Write exactly as a Senior Engineer speaking naturally in a live interview. Use first-person ("I would start by...", "For the database, I chose..."). Use smooth, conversational paragraphs. Do NOT use dense, robotic bullet points.
+2. Format EXACTLY with these headings:
+   ### 1. High-Level Architecture (Spoken overview)
    ### 2. Architecture Diagram
-   ### 3. End-to-End Data Flow
-   ### 4. Database Strategy (Justify SQL vs NoSQL)
+   ### 3. End-to-End Data Flow (Conversational walkthrough)
+   ### 4. Database Strategy (Spoken justification)
    ### 5. Scalability & Bottlenecks
-2. Under "Architecture Diagram", you MUST provide a valid Mermaid.js flowchart (using \`\`\`mermaid ... \`\`\` syntax). 
+3. Under "Architecture Diagram", you MUST provide a valid Mermaid.js flowchart. 
    - CRITICAL: You MUST wrap the diagram EXACTLY in markdown code blocks like this:
    \`\`\`mermaid
    flowchart TD
    A["Node 1"] --> B["Node 2"]
    \`\`\`
    - Use double quotes around all node names to prevent syntax errors.
-3. NO chatbot fluff. NO introductory sentences. NO code snippets EXCEPT for the Mermaid diagram block.
-Transcript:`
+   - CRITICAL: For any node label longer than 3 words, you MUST insert a <br/> tag to logically wrap the text to the next line (e.g., A["Stream Processor:<br/>Quality Eval"]). Do not let single lines get too long.
+4. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after section 5.
+5. NO chatbot fluff. NO introductory sentences. NO code snippets EXCEPT for the Mermaid diagram block.
+
+Active Context (${activeContextLabel}):
+"${activeContext}"`
         break
 
       // 4. CODING DEEP DIVE ANSWER
@@ -587,20 +608,22 @@ Active Context (${activeContextLabel}):
 "${activeContext}"`
         break
 
-      // 5. CAREER / RESUME (Triggering the RAG backend)
       // 5. STRATEGY, METRICS & PRODUCT ANSWER
       case 'strategy':
         displayCommand = 'Strategy & Metrics'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a Senior-level strategic breakdown for the product, metrics, or evaluation question asked in the transcript.
+Task: Provide a Senior-level strategic breakdown for the product, metrics, or evaluation question designed specifically as a SPOKEN INTERVIEW SCRIPT.
 Rules:
-1. Focus heavily on telemetry, explicit vs implicit signals, user behavior, and edge cases.
-2. Format EXACTLY with these headings:
-   ### 1. Core Strategy (How to approach the problem)
-   ### 2. Edge Cases & Risks
-   ### 3. Explicit Metrics with Definitions (What to track and how to define it)
-   ### 4. Implicit Metrics (Behavioral Proxies)
-3. NO chatbot fluff. NO introductory sentences. NO code snippets.
+1. Tone & Style: Write exactly as a Senior Engineer or Product Manager speaking naturally in a live interview. Use first-person ("I would approach this by...", "The primary metric I'd track is..."). Use smooth, conversational paragraphs. Do NOT use dense, robotic bullet points.
+2. Focus heavily on telemetry, explicit vs implicit signals, user behavior, and edge cases, but explain them conversationally.
+3. Format EXACTLY with these headings:
+   ### 1. Core Strategy (Spoken approach to the problem)
+   ### 2. Edge Cases & Risks (Conversational walkthrough of pitfalls)
+   ### 3. Explicit Metrics (Spoken definitions of what to track)
+   ### 4. Implicit Metrics (Behavioral proxies explained naturally)
+4. DO NOT USE TABLES. Write a natural, spoken comparison.
+5. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after section 4.
+6. NO chatbot fluff. NO introductory sentences. NO code snippets.
 
 Active Context (${activeContextLabel}):
 "${activeContext}"`
@@ -609,17 +632,17 @@ Active Context (${activeContextLabel}):
       case 'concept':
         displayCommand = 'Technical Deep Dive'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a Senior-level conceptual breakdown for the technical theory, comparison, or mechanism asked in the transcript. This is a script for the candidate to explain verbally.
+Task: Provide a Senior-level TECHNICAL DEEP DIVE designed specifically as a SPOKEN INTERVIEW SCRIPT. 
 Rules:
-1. Focus on clarity, architectural trade-offs, and demonstrating deep under-the-hood understanding.
-2. Use bullet points for extreme readability.
-3. Format EXACTLY with these headings:
-   ### 1. The Elevator Pitch (A brilliant 1-sentence summary or analogy)
-   ### 2. Core Mechanics (How it actually works under the hood)
-   ### 3. Trade-offs & Decision Matrix (Pros, Cons, and "When to use which")
-   ### 4. Production Example (A concrete real-world scenario)
-4. NO chatbot fluff. NO introductory sentences. NO massive blocks of text.
-
+1. Tone & Style: Write exactly as a Senior Engineer speaking naturally in a live interview. Use first-person ("I would...", "In my experience..."). Use smooth, conversational phrasing. Do NOT use dense, robotic bullet points or fragmented sentences.
+2. Format EXACTLY with these headings:
+   ### 1. The Elevator Pitch (Your opening statement)
+   ### 2. Core Mechanics (Explain how it works conversationally)
+   ### 3. Top Options & Trade-offs
+   ### 4. Production Example (Walk them through a scenario)
+3. Under "Top Options & Trade-offs", DO NOT USE A TABLE. Instead, write a natural, spoken comparison of 3 to 4 top tools or approaches. Explain the trade-offs exactly as you would speak them to a manager (e.g., "If we want a managed service, I'd go with Pinecone because... but if we need to self-host to save money, Milvus or Qdrant are better...").   
+4. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after section 4.
+5. NO chatbot fluff. Start immediately with the first heading.
 Active Context (${activeContextLabel}):
 "${activeContext}"`
         break

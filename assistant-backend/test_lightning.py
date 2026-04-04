@@ -18,9 +18,7 @@ print("🔑 Testing Lightning AI Models with the following API Key:" , FULL_API_
 models_to_test = [
     "lightning-ai/gpt-oss-120b",
     "lightning-ai/llama-3.3-70b",
-    "lightning-ai/DeepSeek-V3.1", # Sometimes formatted as deepseek/deepseek-v3.1
-    "google/gemini-2.5-flash",
-    "google/gemini-3-flash-preview"
+    "lightning-ai/DeepSeek-V3.1", 
 ]
 
 print(f"🔑 Using Billing Key format: ***...***.../{BILLING_WORKSPACE}\n")
