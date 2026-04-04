@@ -29,6 +29,8 @@ CRITICAL RULES for SPEED:
    - CRITICAL: Wrap it EXACTLY in \`\`\`mermaid code blocks. Do not forget the backticks.
    - Use "flowchart TD" and double quotes around all node names (e.g., A["API Gateway"]).
    - Use <br/> to wrap node text longer than 3 words.
+7. **CRITICAL: If it is a System Design question, DO NOT generate any application code (Python, SQL, etc.). Output only the diagram and concise conceptual explanations.
+
 """
 
 LEGACY_FAST_CODING_PROMPT = """
