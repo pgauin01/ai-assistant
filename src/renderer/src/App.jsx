@@ -152,23 +152,28 @@ function App() {
         lineColor: '#9CA3AF',
         textColor: '#FFFFFF',
         background: 'transparent',
-        fontFamily: 'inherit'
-        // (You can remove fontSize from here, it gets ignored anyway)
+
+        // 1. THE FIX: Stop using 'inherit'. Force the measuring engine to use a modern, wide font.
+        fontFamily:
+          'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+
+        // 2. THE FIX: Sync the internal math font-size with the CSS font-size below
+        fontSize: '12px'
       },
-      // 🚀 THE NUCLEAR OPTION: Force font size using direct SVG CSS injection
       themeCSS: `
         .node text, .nodeLabel { 
           font-size: 12px !important; 
+          font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
         }
         .edgeLabel text { 
-          font-size: 12px !important; 
+          font-size: 11px !important; 
         }
       `,
       flowchart: {
-        htmlLabels: false, // Keep this false!
-        padding: 5,
-        nodeSpacing: 20,
-        rankSpacing: 20
+        htmlLabels: false, // MUST remain false
+        padding: 20, // Bumped up slightly to 20 to give extra breathing room
+        nodeSpacing: 50,
+        rankSpacing: 50
       },
       securityLevel: 'loose'
     })
