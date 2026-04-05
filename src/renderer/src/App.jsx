@@ -599,28 +599,27 @@ ${contextBlock}`
       case 'coding':
         displayCommand = 'Coding Deep Dive'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a Senior-level coding solution designed specifically as a SPOKEN INTERVIEW SCRIPT.
+Task: Provide a Senior-level coding solution or explanation designed specifically as a SPOKEN INTERVIEW SCRIPT.
 
 CRITICAL CONTEXT RULE: 
-If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH regarding the core coding question. Use the Raw Transcript ONLY to hunt for extra technical constraints (e.g., time/space complexity limits, strict edge cases) that might have been left out of the summary.
+If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH regarding the core question. Use the Raw Transcript to hunt for extra technical constraints or to detect if this is a FOLLOW-UP question.
 
 Rules:
-1. Tone & Style: Write exactly as a Senior Engineer speaking naturally in a live coding interview. Use first-person ("I'll approach this by...", "Since we need O(N) time, I'm using..."). Use smooth, conversational paragraphs for the text sections.
-2. ZERO IMPORTS OR LIBRARIES: You MUST solve the problem using strictly built-in language features (e.g., no multiprocessing, collections, itertools, math, etc.).
-3. Format EXACTLY with these headings:
-   ### 1. Optimal Approach (Spoken logic walkthrough)
-   ### 2. Time & Space Complexity (Conversational explanation)
-   ### 3. Code Implementation
-4. Code Block Rules:
-   - Wrap the code in a standard Markdown code block.
-   - CRITICAL: You MUST use proper newlines (\\n) for every single line of code. Do NOT squash code onto a single line.
-   - Embed your narrative DIRECTLY inside the code block as highly detailed inline comments explaining the "Why" and "How" for the interviewer.
-   - Include a distinct "Example Usage" section at the bottom of the code block.
-5. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after the code block.
-6. NO tables. NO chatbot fluff. Start immediately with heading 1.
+1. Tone & Style: Write exactly as a Senior Engineer speaking naturally. Use first-person ("Since we need O(N) time, I'm using..."). Use smooth paragraphs.
+2. ZERO IMPORTS OR LIBRARIES: Solve problems using strictly built-in language features.
+3. DYNAMIC FORMATTING: 
+   - IF the interviewer is asking to solve a new problem: Format EXACTLY with these 3 headings: ### 1. Optimal Approach, ### 2. Time & Space Complexity, ### 3. Code Implementation.
+   - IF the interviewer is asking a FOLLOW-UP question about code already written (e.g., asking for time complexity, edge cases, or optimizations): DO NOT generate a code block. Format EXACTLY with one heading: ### 1. Spoken Explanation. Write a 2-paragraph conversational answer.
+4. Code Block Rules (Only if generating code):
+   - Wrap the code in a standard Markdown code block with proper newlines (\\n).
+   - Embed your narrative DIRECTLY inside the code block as highly detailed inline comments.
+   - Include an "Example Usage" section at the bottom.
+5. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after finishing.
+6. NO tables. NO chatbot fluff.
 
 Context Provided:
-${contextBlock}`
+\${contextBlock}`
+        break
         break
 
       // 5. STRATEGY, METRICS & PRODUCT ANSWER
@@ -753,6 +752,7 @@ ${contextBlock}`
     const payloadText = augmentedPrompt || displayCommand
     const text = payloadText.trim()
 
+    // 1. Handle Exit Command
     if (text.toLowerCase() === '/exit') {
       const dateStr = new Date().toISOString().replace(/[:.]/g, '-')
       let markdown = `# Interview Meeting Transcript - ${dateStr}\n\n`
@@ -770,12 +770,19 @@ ${contextBlock}`
       return
     }
 
+    // 2. Setup UI State
     const userMessage = { role: 'user', content: displayCommand }
     const nextMessages = [...messages, userMessage]
 
     setMessages(nextMessages)
     setInput('')
     setIsThinking(true) // Briefly show "Thinking..." while making the network request
+
+    // --- BENCHMARK: Start High-Res Timer ---
+    console.log(`\n🚀 --- BENCHMARK STARTING: [${displayCommand}] ---`)
+    const startTime = performance.now()
+    let ttft = null
+    let charCount = 0
 
     try {
       const backendMessages = [...messages, { role: 'user', content: payloadText }]
@@ -811,6 +818,13 @@ ${contextBlock}`
         const textChunk = decoder.decode(value, { stream: true })
         assistantReply += textChunk
 
+        // --- BENCHMARK: Capture TTFT the moment the first characters arrive ---
+        if (ttft === null && textChunk.trim() !== '') {
+          ttft = (performance.now() - startTime) / 1000
+          console.log(`⏱️ TTFT (Time To First Token): ${ttft.toFixed(3)} seconds`)
+        }
+        charCount += textChunk.length // Track length for TPS calc
+
         // --- THE FIX: Create a brand new message object ---
         setMessages((prev) => {
           const newMessages = [...prev]
@@ -828,6 +842,19 @@ ${contextBlock}`
         // Give Chromium a paint opportunity between streamed chunks in production builds.
         await new Promise((resolve) => requestAnimationFrame(resolve))
       }
+
+      // --- BENCHMARK: Final Calculations ---
+      const totalTime = (performance.now() - startTime) / 1000
+      const generationTime = totalTime - (ttft || 0) // Avoid NaN if ttft is null
+      const estimatedTokens = Math.ceil(charCount / 4)
+      const tps = generationTime > 0 ? estimatedTokens / generationTime : 0
+
+      console.log(`🏁 Total Time: ${totalTime.toFixed(3)} seconds`)
+      console.log(`📏 Estimated Tokens: ~${estimatedTokens}`)
+      console.log(`⚡ TPS (Tokens Per Second): ${tps.toFixed(1)} tokens/sec`)
+      console.log(`--------------------------------------------------\n`)
+
+      // Execute specific post-processing action
       if (actionType === 'summary') {
         const cleanedSummary = sanitizeSummaryText(assistantReply)
         if (cleanedSummary) {
