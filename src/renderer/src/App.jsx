@@ -511,54 +511,67 @@ function App() {
     const summaryContext = editableSummary.trim()
     const liveMsg = [...messages].reverse().find((m) => m.content?.includes('[Live System Audio]'))
     const rawText = liveMsg ? liveMsg.content.replace('🎧 **[Live System Audio]:**', '').trim() : ''
-    const activeContext = summaryContext || rawText
-    const activeContextLabel = summaryContext ? 'Clean Summary' : 'Live Transcript'
 
-    console.log('Active Context for Action:', { summaryContext, activeContext, activeContextLabel })
+    // Build the Hybrid Context Block
+    let contextBlock = ''
+    if (summaryContext && rawText) {
+      contextBlock = `[PRIMARY INTENT - User Summary]:\n"${summaryContext}"\n\n[SUPPORTING DETAILS - Raw Audio Transcript]:\n"${rawText}"`
+    } else if (summaryContext) {
+      contextBlock = `[PRIMARY INTENT - User Summary]:\n"${summaryContext}"`
+    } else if (rawText) {
+      contextBlock = `[Raw Audio Transcript]:\n"${rawText}"`
+    }
 
-    if (!activeContext) {
+    if (!contextBlock) {
       showMicToast('No active context found.')
       return
     }
-
     // 3. Define the prompts based on the action
     let displayCommand = ''
     let augmentedPrompt = ''
 
     switch (actionType) {
-      // 1. SUMMARIZE THE QUESTION (When the interviewer is rambling)
-      case 'summary':
-        displayCommand = 'Summarize Question'
+      case 'full_analysis':
+        displayCommand = 'Full Interview Analysis'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-You are assisting a candidate in a live technical interview. 
-Task: Extract the core technical question or task from this rambling transcript. 
-Rules: 
-1. DO NOT guess the interviewer's intent.
-2. DO NOT mention "past projects" unless explicitly stated.
-3. Output exactly 1 clear sentence describing the core task. DO NOT use conversational filler like "They want you to" or "They are asking". State the requirement directly.
+Task: You are an elite Technical Interview Assistant. Analyze the provided interview context and generate a complete tactical breakdown.
 
-Active Context (${activeContextLabel}):
-"${activeContext}"`
-        break
+CRITICAL CONTEXT RULE (THE "CONTEXT DRIFT" CHECK): 
+First, compare the "User Summary" and the "Raw Audio Transcript" (if both exist).
+- SOFT PIVOT: If they are related, the User Summary is the overarching goal. Use the Transcript to identify the current sub-topic or interruption.
+- HARD PIVOT (BRAND NEW QUESTION): If the Transcript is completely unrelated to the User Summary, ASSUME THE SUMMARY IS OUTDATED. You MUST ignore the old User Summary completely and base your entire analysis on the Raw Audio.
 
-      // 2. QUICK ANSWER (The 5-second Cheat Sheet)
-      case 'quick':
-        displayCommand = 'Quick Answer'
-        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a "cheat sheet" answer to the implicit question in this live transcript.
-Rules: 
-1. Use EXACTLY 3 short bullet points.
-2. Focus ONLY on core concepts, terminology, or direct syntax.
-3. NO chatbot fluff, NO greetings, NO full paragraphs. I need to read this in 5 seconds.
+Rules:
+1. NO chatbot fluff. NO introductory sentences. Start immediately with heading 1.
+2. Format EXACTLY with these headings:
+   ### 1. Intent Evaluation
+   ### 2. The Overarching Goal
+   ### 3. The Current Pivot & Cheat Sheet
+   ### 4. Architect Follow-Ups
+   ### 5. Interview Category
 
-Active Context (${activeContextLabel}):
-"${activeContext}"`
+3. Under "Intent Evaluation", state what the interviewer is focusing on RIGHT NOW. If they use misleading words (like "design" when asking about metrics), explicitly call out the true intent. If a Hard Pivot occurred, explicitly state: "The interviewer has moved to a brand new question."
+4. Under "Interview Category", output EXACTLY ONE tag based on the CURRENT Question:
+   - [CODING] (Algorithms, data structures, writing code)
+   - [STRATEGY] (Product metrics, evaluating success, user satisfaction, telemetry. CRITICAL: If they ask HOW TO MEASURE or EVALUATE something, it is ALWAYS [STRATEGY].)
+   - [CONCEPT] (Explaining how a technology works, comparing tools, selecting a specific technology like a database, or discussing trade-offs/criteria for a single component. CRITICAL: Use this if they ask "Which tool should we use and why?")
+   - [SYSTEM DESIGN] (End-to-end technical architecture, system scaling, connecting APIs, drawing flowcharts. CRITICAL: Do NOT use this tag if they are just asking you to compare tools or list selection criteria for a single component.)
+5. Under "The Overarching Goal", write EXACTLY 1 clear sentence extracting the main task. (If a Hard Pivot occurred, state the NEW main task here).
+6. Under "The Current Pivot & Cheat Sheet", first write EXACTLY 1 bolded sentence stating what they are asking for right this second. Immediately below that, write EXACTLY 3 short bullet points in a first-person spoken tone that the candidate can read directly out loud to answer it.
+7. Under "Architect Follow-Ups", write 2 highly intelligent clarifying questions tailored to the CURRENT question.
+
+Context Provided:
+${contextBlock}`
         break
 
       case 'design':
         displayCommand = 'System Design'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
 Task: Provide a Senior-level SYSTEM DESIGN architecture designed specifically as a SPOKEN INTERVIEW SCRIPT.
+
+CRITICAL CONTEXT RULE: 
+If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH regarding the core question. Use the Raw Transcript ONLY to hunt for extra technical constraints (e.g., scale, latency, specific tech stack) that might have been left out of the summary.
+
 Rules:
 1. Tone & Style: Write exactly as a Senior Engineer speaking naturally in a live interview. Use first-person ("I would start by...", "For the database, I chose..."). Use smooth, conversational paragraphs. Do NOT use dense, robotic bullet points.
 2. Format EXACTLY with these headings:
@@ -578,39 +591,36 @@ Rules:
 4. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after section 5.
 5. NO chatbot fluff. NO introductory sentences. NO code snippets EXCEPT for the Mermaid diagram block.
 
-Active Context (${activeContextLabel}):
-"${activeContext}"`
+Context Provided:
+${contextBlock}`
         break
 
       // 4. CODING DEEP DIVE ANSWER
       case 'coding':
         displayCommand = 'Coding Deep Dive'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a Senior-level technical solution for the coding question in the transcript.
+Task: Provide a Senior-level coding solution designed specifically as a SPOKEN INTERVIEW SCRIPT.
+
+CRITICAL CONTEXT RULE: 
+If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH regarding the core coding question. Use the Raw Transcript ONLY to hunt for extra technical constraints (e.g., time/space complexity limits, strict edge cases) that might have been left out of the summary.
+
 Rules:
-1. ZERO IMPORTS OR LIBRARIES. You MUST solve the problem using strictly built-in language features (e.g., no multiprocessing, collections, itertools, math, etc.).
-2. Do NOT create a separate "Line-by-Line Narrative" section. Instead, embed the narrative DIRECTLY inside the code block as highly detailed inline comments explaining the "Why" and "How" for the evaluator.
-3. You MUST include a distinct "Example Usage" section at the bottom of the code block demonstrating how to call the function and print the result.
-4. Format EXACTLY with these headings:
-   ### 1. Optimal Approach (The "High-Level" logic)
-   ### 2. Time & Space Complexity
-   ### 3. Code Implementation (with detailed inline comments)
-5. NO chatbot fluff. NO introductory sentences.
+1. Tone & Style: Write exactly as a Senior Engineer speaking naturally in a live coding interview. Use first-person ("I'll approach this by...", "Since we need O(N) time, I'm using..."). Use smooth, conversational paragraphs for the text sections.
+2. ZERO IMPORTS OR LIBRARIES: You MUST solve the problem using strictly built-in language features (e.g., no multiprocessing, collections, itertools, math, etc.).
+3. Format EXACTLY with these headings:
+   ### 1. Optimal Approach (Spoken logic walkthrough)
+   ### 2. Time & Space Complexity (Conversational explanation)
+   ### 3. Code Implementation
+4. Code Block Rules:
+   - Wrap the code in a standard Markdown code block.
+   - CRITICAL: You MUST use proper newlines (\\n) for every single line of code. Do NOT squash code onto a single line.
+   - Embed your narrative DIRECTLY inside the code block as highly detailed inline comments explaining the "Why" and "How" for the interviewer.
+   - Include a distinct "Example Usage" section at the bottom of the code block.
+5. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after the code block.
+6. NO tables. NO chatbot fluff. Start immediately with heading 1.
 
-Active Context (${activeContextLabel}):
-"${activeContext}"`
-        break
-
-      // 4. FOLLOW-UP QUESTION (Sounding like an Architect)
-      case 'followup':
-        displayCommand = 'Follow-up Questions'
-        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Based on this interview transcript, generate 2 highly intelligent, senior-level clarifying questions the candidate can ask the interviewer.
-Strategy: Focus on architectural foresight (e.g., asking about data scale, edge cases, state management, or latency). 
-Rules: Output ONLY the 2 questions. Sound natural and conversational.
-
-Active Context (${activeContextLabel}):
-"${activeContext}"`
+Context Provided:
+${contextBlock}`
         break
 
       // 5. STRATEGY, METRICS & PRODUCT ANSWER
@@ -618,6 +628,10 @@ Active Context (${activeContextLabel}):
         displayCommand = 'Strategy & Metrics'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
 Task: Provide a Senior-level strategic breakdown for the product, metrics, or evaluation question designed specifically as a SPOKEN INTERVIEW SCRIPT.
+
+CRITICAL CONTEXT RULE: 
+If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH regarding the core question. Use the Raw Transcript ONLY to hunt for extra technical constraints (e.g., scale, latency, specific tech stack) that might have been left out of the summary.
+
 Rules:
 1. Tone & Style: Write exactly as a Senior Engineer or Product Manager speaking naturally in a live interview. Use first-person ("I would approach this by...", "The primary metric I'd track is..."). Use smooth, conversational paragraphs. Do NOT use dense, robotic bullet points.
 2. Focus heavily on telemetry, explicit vs implicit signals, user behavior, and edge cases, but explain them conversationally.
@@ -630,14 +644,18 @@ Rules:
 5. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after section 4.
 6. NO chatbot fluff. NO introductory sentences. NO code snippets.
 
-Active Context (${activeContextLabel}):
-"${activeContext}"`
+Context Provided:
+${contextBlock}`
         break
       // 6. TECHNICAL CONCEPT / THEORY (For verbal explanations & comparisons)
       case 'concept':
         displayCommand = 'Technical Deep Dive'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
 Task: Provide a Senior-level TECHNICAL DEEP DIVE designed specifically as a SPOKEN INTERVIEW SCRIPT. 
+
+CRITICAL CONTEXT RULE: 
+If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH regarding the core question. Use the Raw Transcript ONLY to hunt for extra technical constraints (e.g., scale, latency, specific tech stack) that might have been left out of the summary.
+
 Rules:
 1. Tone & Style: Write exactly as a Senior Engineer speaking naturally in a live interview. Use first-person ("I would...", "In my experience..."). Use smooth, conversational phrasing. Do NOT use dense, robotic bullet points or fragmented sentences.
 2. Format EXACTLY with these headings:
@@ -648,8 +666,8 @@ Rules:
 3. Under "Top Options & Trade-offs", DO NOT USE A TABLE. Instead, write a natural, spoken comparison of 3 to 4 top tools or approaches. Explain the trade-offs exactly as you would speak them to a manager (e.g., "If we want a managed service, I'd go with Pinecone because... but if we need to self-host to save money, Milvus or Qdrant are better...").   
 4. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after section 4.
 5. NO chatbot fluff. Start immediately with the first heading.
-Active Context (${activeContextLabel}):
-"${activeContext}"`
+Context Provided:
+${contextBlock}`
         break
     }
 
@@ -1571,17 +1589,17 @@ Active Context (${activeContextLabel}):
           messages.some((msg) => msg.content?.includes('[Live System Audio]'))) && (
           <div className="w-[700px] mt-2 flex flex-wrap justify-end gap-2 animate-fade-in-up">
             <button
-              onClick={() => handleContextualAction('summary')}
+              onClick={() => handleContextualAction('full_analysis')}
               className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs font-semibold rounded-md border border-gray-600 transition-colors"
             >
-              📝 Summarize Question
+              📝 Analysis
             </button>
-            <button
+            {/* <button
               onClick={() => handleContextualAction('quick')}
               className="px-3 py-1.5 bg-blue-900/50 hover:bg-blue-800 text-blue-200 text-xs font-semibold rounded-md border border-blue-700 transition-colors"
             >
               ⚡ Quick Answer
-            </button>
+            </button> */}
             <button
               onClick={() => handleContextualAction('concept')}
               className="px-3 py-1.5 bg-amber-900/50 hover:bg-amber-800 text-amber-200 text-xs font-semibold rounded-md border border-amber-700 transition-colors"
@@ -1607,12 +1625,12 @@ Active Context (${activeContextLabel}):
               📊 Strategy & Metrics
             </button>
 
-            <button
+            {/* <button
               onClick={() => handleContextualAction('followup')}
               className="px-3 py-1.5 bg-orange-900/50 hover:bg-orange-800 text-orange-200 text-xs font-semibold rounded-md border border-orange-700 transition-colors"
             >
               ❓ Follow Up Question
-            </button>
+            </button> */}
             {/* <button
               onClick={() => handleContextualAction('career')}
               className="px-3 py-1.5 bg-emerald-900/50 hover:bg-emerald-800 text-emerald-200 text-xs font-semibold rounded-md border border-emerald-700 transition-colors"
