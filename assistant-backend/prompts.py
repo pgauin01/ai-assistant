@@ -25,11 +25,7 @@ CRITICAL RULES for SPEED:
    - CRITICAL: You MUST use proper newlines (\n) for every line of code. Do NOT squash code onto a single line.
    - Do NOT wrap plain English explanations inside code blocks.
 5. **CRITICAL: DO NOT USE TABLES.** Present all comparisons and metrics as structured paragraphs or simple lists.
-6. DIAGRAMS: If the prompt involves architecture or data flow, include a Mermaid.js diagram. 
-   - CRITICAL: Wrap it EXACTLY in \`\`\`mermaid code blocks. Do not forget the backticks.
-   - Use "flowchart TD" and double quotes around all node names (e.g., A["API Gateway"]).
-   - Use <br/> to wrap node text longer than 3 words.
-7. **CRITICAL: If it is a System Design question, DO NOT generate any application code (Python, SQL, etc.). Output only the diagram and concise conceptual explanations.
+6. **CRITICAL: If it is a System Design question, DO NOT generate any application code (Python, SQL, etc.). Output only the concise conceptual explanations.
 
 """
 
