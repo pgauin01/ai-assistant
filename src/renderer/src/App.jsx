@@ -581,18 +581,21 @@ If both a "User Summary" and "Raw Audio Transcript" are provided below, use the 
 
 Rules:
 1. Tone & Style: Act as a pragmatic Senior Software Engineer. Use first-person ("I realized we had a bottleneck..."). Be humble, highly collaborative, but explicitly own your impact. Avoid arrogant phrasing.
-2. NO chatbot fluff. Start immediately with heading 1.
-3. DYNAMIC FORMATTING: Format EXACTLY with these markdown headings IN THIS EXACT ORDER:
+2. THE PIVOT RULE (CRITICAL): Evaluate if the provided \`[RELEVANT PAST EXPERIENCE]\` actually matches the interviewer's specific question. 
+   - If it is a Direct Match: Proceed normally.
+   - If it is a Miss/Irrelevant (or contains a [SYSTEM WARNING]): DO NOT invent facts or hallucinate a perfect fit. Instead, pick the closest parallel theme from the provided context. You MUST start your Hook with a bridge phrase like: "I actually haven't faced that exact scenario recently, but a highly parallel challenge I faced was..."
+3. NO chatbot fluff. Start immediately with heading 1.
+4. DYNAMIC FORMATTING: Format EXACTLY with these markdown headings IN THIS EXACT ORDER:
    ### 1. The Hook (TL;DR)
    ### 2. Situation & Task
    ### 3. Action (My Contribution)
    ### 4. Result & Metrics
    ### 5. The Retrospective (The Senior Perspective)
-4. Under "The Hook", write 1 punchy spoken sentence summarizing the story (e.g., "This reminds me of a time I had to push back on a product manager to prevent a major production outage...").
-5. Under "Situation & Task", write 2 sentences setting the stage. Keep the context brief and focused on the business problem.
-6. Under "Action", use a standard Markdown bulleted list (*) of 3 specific technical or communicative steps YOU took. Bold the first few words of each bullet. Focus on pragmatic problem-solving, compromise, and communication.
-7. Under "Result & Metrics", write 2 sentences detailing the positive business outcome. Include realistic, grounded metrics (e.g., "We hit the deadline and reduced deployment time by 40%").
-8. Under "The Retrospective", write 1 or 2 sentences explaining what this taught you or what processes you changed because of it. (e.g., "Because of that incident, I now enforce early alignment meetings..."). This is critical for showing Senior-level growth.
+5. Under "The Hook", write 1 punchy spoken sentence summarizing the story. (Use the bridge phrase from Rule 2 if you are pivoting).
+6. Under "Situation & Task", write 2 sentences setting the stage. Keep the context brief and focused on the business problem.
+7. ACTION FORMATTING: Under "Action", you MUST provide a Markdown bulleted list of 3 specific steps you took. CRITICAL: You MUST format each bullet exactly like this: \`* **[Action Verb]:** [Explanation]\`. Focus on pragmatic problem-solving, compromise, and communication.
+8. Under "Result & Metrics", write 2 sentences detailing the positive business outcome. Include realistic, grounded metrics (e.g., "We hit the deadline and reduced deployment time by 40%").
+9. Under "The Retrospective", write 1 or 2 sentences explaining what this taught you or what processes you changed because of it (e.g., "Because of that incident, I now enforce early alignment meetings..."). This is critical for showing Senior-level growth.
 
 Context Provided:
 ${contextBlock}`
@@ -637,6 +640,7 @@ Rules:
    - [STRATEGY] (Product metrics, evaluating success, user satisfaction, telemetry. CRITICAL: If they ask HOW TO MEASURE or EVALUATE something, it is ALWAYS [STRATEGY].)
    - [CONCEPT] (Explaining how a technology works, comparing tools, selecting a specific technology like a database, or discussing trade-offs/criteria for a single component. CRITICAL: Use this if they ask "Which tool should we use and why?")
    - [SYSTEM DESIGN] (End-to-end technical architecture, system scaling, connecting APIs, drawing flowcharts. CRITICAL: Do NOT use this tag if they are just asking you to compare tools or list selection criteria for a single component.)
+   - [BEHAVIORAL] Use this ONLY if the interviewer explicitly asks about your past experiences, conflicts, failures, or leadership (e.g., "Tell me about a time...", "Give an example of when you..."). DO NOT use this tag if they are asking you to define a technical concept or compare technologies.
 5. Under "The Current Pivot & Cheat Sheet", first write EXACTLY 1 bolded sentence stating what they are asking for right this second. Immediately below that, write EXACTLY 3 short bullet points in a first-person spoken tone that the candidate can read directly out loud to answer it.
 6. Under "Architect Follow-Ups", write 2 highly intelligent clarifying questions tailored to the CURRENT question.
 

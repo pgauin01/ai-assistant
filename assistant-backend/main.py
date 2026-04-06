@@ -1461,14 +1461,25 @@ async def export_markdown(request: ExportRequest):
 
 @app.post("/search-career")
 async def search_career(query: RagQuery):
-    # k=1 is critical here. We only want the SINGLE most relevant project 
-    # to avoid blowing up the LLM's context window.
-    docs = career_db.similarity_search(query.transcript, k=1)
+    # Use _with_score to see HOW relevant the result actually is.
+    # Note: Lower score usually means closer/better match (L2 distance), 
+    # but check your specific embedding model's metric.
+    docs_and_scores = career_db.similarity_search_with_score(query.transcript, k=1)
     
-    if not docs:
-        return {"context": "No specific project found. Answer generally."}
+    if not docs_and_scores:
+        return {"context": "[NO CAREER DATA FOUND]"}
         
-    return {"context": docs[0].page_content}     
+    doc, score = docs_and_scores[0]
+    
+    # Define a threshold (you will need to test what number works for your embeddings)
+    # If the score is worse than the threshold, flag it for the LLM.
+    THRESHOLD = 0.84 
+    
+    if score > THRESHOLD:
+        warning = "\n[SYSTEM WARNING: This project is only loosely related. Use the 'Pivot Rule' to bridge the gap.]"
+        return {"context": doc.page_content + warning}
+        
+    return {"context": doc.page_content} 
 
 # -----------------------------
 # Server Startup (Crucial for .exe)
