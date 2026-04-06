@@ -153,6 +153,10 @@ OLLAMA_MODEL = "qwen2.5-coder:3b"
 import ctypes
 import tkinter as tk
 
+class RagQuery(BaseModel):
+    transcript: str
+
+
 class SnippingTool:
     def __init__(self):
         self.root = tk.Tk()
@@ -1453,7 +1457,18 @@ async def export_markdown(request: ExportRequest):
             f.write(f"### {msg.role}\n")
             f.write(f"{msg.content}\n\n")
             
-    return {"status": "success", "file": filename}        
+    return {"status": "success", "file": filename}   
+
+@app.post("/search-career")
+async def search_career(query: RagQuery):
+    # k=1 is critical here. We only want the SINGLE most relevant project 
+    # to avoid blowing up the LLM's context window.
+    docs = career_db.similarity_search(query.transcript, k=1)
+    
+    if not docs:
+        return {"context": "No specific project found. Answer generally."}
+        
+    return {"context": docs[0].page_content}     
 
 # -----------------------------
 # Server Startup (Crucial for .exe)

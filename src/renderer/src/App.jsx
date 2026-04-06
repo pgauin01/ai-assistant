@@ -548,6 +548,55 @@ function App() {
     let augmentedPrompt = ''
 
     switch (actionType) {
+      case 'behavioral':
+        displayCommand = 'Behavioral & Leadership (STAR Method)'
+
+        try {
+          const ragResponse = await fetch('http://localhost:8000/search-career', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ transcript: rawText })
+          })
+          const ragData = await ragResponse.json()
+          console.log('RAG Data:', ragData)
+
+          // Overwrite the default context with the hydrated RAG context
+          contextBlock = `
+[RELEVANT PAST EXPERIENCE]
+${ragData.context}
+
+[LIVE INTERVIEW TRANSCRIPT]
+${rawText}
+`
+        } catch (error) {
+          console.error('FAISS DB unreachable, falling back to default context.', error)
+        }
+
+        displayCommand = 'Behavioral & Leadership (STAR Method)'
+        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
+Task: Provide a behavioral interview answer using the STAR method designed specifically as a SPOKEN INTERVIEW SCRIPT.
+
+CRITICAL CONTEXT RULE: 
+If both a "User Summary" and "Raw Audio Transcript" are provided below, use the User Summary to identify the user's real past projects to use as the realistic setting for the story. Use the Raw Transcript to identify the core behavioral question being asked (e.g., conflict, failure, leadership, tight deadlines).
+
+Rules:
+1. Tone & Style: Act as a pragmatic Senior Software Engineer. Use first-person ("I realized we had a bottleneck..."). Be humble, highly collaborative, but explicitly own your impact. Avoid arrogant phrasing.
+2. NO chatbot fluff. Start immediately with heading 1.
+3. DYNAMIC FORMATTING: Format EXACTLY with these markdown headings IN THIS EXACT ORDER:
+   ### 1. The Hook (TL;DR)
+   ### 2. Situation & Task
+   ### 3. Action (My Contribution)
+   ### 4. Result & Metrics
+   ### 5. The Retrospective (The Senior Perspective)
+4. Under "The Hook", write 1 punchy spoken sentence summarizing the story (e.g., "This reminds me of a time I had to push back on a product manager to prevent a major production outage...").
+5. Under "Situation & Task", write 2 sentences setting the stage. Keep the context brief and focused on the business problem.
+6. Under "Action", use a standard Markdown bulleted list (*) of 3 specific technical or communicative steps YOU took. Bold the first few words of each bullet. Focus on pragmatic problem-solving, compromise, and communication.
+7. Under "Result & Metrics", write 2 sentences detailing the positive business outcome. Include realistic, grounded metrics (e.g., "We hit the deadline and reduced deployment time by 40%").
+8. Under "The Retrospective", write 1 or 2 sentences explaining what this taught you or what processes you changed because of it. (e.g., "Because of that incident, I now enforce early alignment meetings..."). This is critical for showing Senior-level growth.
+
+Context Provided:
+${contextBlock}`
+        break
       case 'quick_answer':
         displayCommand = 'Quick Answer'
         augmentedPrompt = `[Quick Command: QUICK_ANSWER]
@@ -557,7 +606,7 @@ Task:
 ${contextBlock}
 
 CRITICAL RULES FOR SPEED:
-1. EXTREME BREVITY: Your entire response MUST be 4 sentences or less. CRITICAL: Use short, punchy sentences (max 15-20 words per sentence). Write exactly like a spoken conversation, do NOT output dense, robotic run-on sentences.
+1. EXTREME BREVITY: Your entire response MUST be 5 sentences or less. CRITICAL: Use short, punchy sentences (max 15-20 words per sentence). Write exactly like a spoken conversation, do NOT output dense, robotic run-on sentences.
 2. NO FORMATTING OVERHEAD: Do NOT use markdown headings, code blocks, or lists. Output plain text only. 
 3. DIRECT ANSWER FIRST: Sentence 1 must definitively answer what the code does, what the bug is, or what the core concept is. 
 4. THE "WHY" SECOND: Sentence 2 and 3 should state the "why" or the immediate fix in a grounded, conversational tone.
@@ -1706,12 +1755,12 @@ ${contextBlock}`
               📊 Strategy & Metrics
             </button>
 
-            {/* <button
-              onClick={() => handleContextualAction('followup')}
+            <button
+              onClick={() => handleContextualAction('behavioral')}
               className="px-3 py-1.5 bg-orange-900/50 hover:bg-orange-800 text-orange-200 text-xs font-semibold rounded-md border border-orange-700 transition-colors"
             >
-              ❓ Follow Up Question
-            </button> */}
+              ❓ Behavioral
+            </button>
             {/* <button
               onClick={() => handleContextualAction('career')}
               className="px-3 py-1.5 bg-emerald-900/50 hover:bg-emerald-800 text-emerald-200 text-xs font-semibold rounded-md border border-emerald-700 transition-colors"
