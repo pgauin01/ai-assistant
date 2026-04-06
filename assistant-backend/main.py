@@ -635,10 +635,21 @@ async def run_moondream_pipeline(command: UserCommand):
         base_url=OLLAMA_BASE_URL
     )
 
-    prompt_text = (
-        "Extract all code, text, and architecture details from this image exactly as written. "
-        "Do not summarize."
-    )
+    prompt_text = """
+Task: You are an elite Technical Interview Vision Extractor. Analyze this screenshot and extract the core technical problem.
+
+CRITICAL EXTRACTION RULES:
+1. IGNORE THE NOISE: Completely ignore all advertisements, pop-ups, navigation menus, browser tabs, and marketing text (e.g., "Flash Sale", "Pro Plan", "Subscribe").
+2. KEYWORD HUNT: Scan strictly for imperative action words like "Write", "Create", "Build", "Design", "Implement", or "Solve". Extract the sentence containing these words as the absolute core task.
+3. CODE EDITORS: If you see a code editor or IDE, extract the instructional comments (e.g., "// Write a function...") and any starter code. Ignore the UI surrounding the editor.
+4. SYSTEM DESIGN DIAGRAMS: If you see a flowchart, whiteboard, or architecture diagram, you MUST transcribe it so a downstream AI can build a Mermaid diagram. 
+   - List every visible node/box (e.g., "Client", "API Gateway", "Database").
+   - Describe the arrows and connections exactly (e.g., "Client has an arrow pointing to API Gateway").
+
+Output Format: 
+Return ONLY the extracted text, code, or diagram description. Do NOT output conversational filler. Do NOT hallucinate tasks based on advertisements.
+""".strip()
+    
     raw_extraction = ""
     moondream_api_key = get_moondream_api_key()
     if not moondream_api_key:
@@ -658,11 +669,13 @@ async def run_moondream_pipeline(command: UserCommand):
 
 
     vision_task = f"""
-You are a strict syntax validator.
+You are an elite Technical Interview Assistant. 
 Review the following raw text extracted from an image by a vision model.
-Fix OCR typos, syntax errors, and formatting issues.
-Output only the corrected code/text.
-Write also explnation of code concept.
+
+CRITICAL INSTRUCTIONS:
+- If the text describes an Architecture/System Design diagram: Output a valid Mermaid.js diagram (`mermaid` code block) representing the text, followed by a brief spoken-style explanation.
+- If the text describes a Coding task or contains starter code: Fix any OCR typos and output the corrected code/task, followed by a brief spoken-style explanation of the core concept.
+- Output ONLY the formatted result and explanation. Do not include AI filler like "Here is the corrected text".
 
 RAW EXTRACTION:
 {raw_extraction}
@@ -1153,12 +1166,16 @@ async def execute_vision_command(request: ChatRequest):
             )
         elif mode == "smart":
             prompt_text = (
-                "Extract all text, code, instructions, or multiple-choice questions perfectly from this image. "
-                "Do not attempt to solve or answer them, just transcribe the raw content accurately."
+                "Task: You are an elite Technical Interview Vision Extractor. Extract all text, code, or architecture details from this image. "
+                "CRITICAL RULES: "
+                "1. IGNORE NOISE: Ignore all ads, pop-ups, and browser UI. "
+                "2. DIAGRAMS: If you see a flowchart or architecture diagram, list the visible nodes and describe the connections exactly (e.g., 'Client box points to Load Balancer box'). "
+                "3. QUESTIONS & CODE: If it's a coding or design question, transcribe the text perfectly. "
+                "Do not attempt to solve, answer, or generate markdown diagrams here. Just transcribe the raw content accurately."
             )
 
         # 4. Query the Moondream Cloud API
-        print(f"Sending Stealth Image to Moondream Cloud API for {mode.upper()}...")
+        # print(f"Sending Stealth Image to Moondream Cloud API for {mode.upper()}...")
         # result = moondream_cloud.query(screenshot, prompt_text)
         # extracted_text = result.get("answer", "").strip()
         # print(f"RAW MOONDREAM OUTPUT:\n{extracted_text}")
