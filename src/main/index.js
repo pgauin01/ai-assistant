@@ -478,9 +478,14 @@ app.whenReady().then(() => {
     if (mainWindow) mainWindow.webContents.send('scroll-action', 'down')
   })
 
-  // --- NEW: Trigger Full Analysis Hotkey ---
+  // Works for the standard top-row 5 key
+  registerShortcut('CommandOrControl+5', () => {
+    if (mainWindow) mainWindow.webContents.send('trigger-action', 'full_analysis')
+  })
+
+  // Works for the Numeric Keypad 5 key
   registerShortcut('CommandOrControl+num5', () => {
-    if (mainWindow) mainWindow.webContents.send('trigger-action', 'summary')
+    if (mainWindow) mainWindow.webContents.send('trigger-action', 'full_analysis')
   })
 
   registerShortcut('CommandOrControl+8', () => {

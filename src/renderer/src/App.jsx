@@ -81,7 +81,7 @@ function App() {
   const [techStack, setTechStack] = useState(
     () => localStorage.getItem('userTechStack') || DEFAULT_STACK
   )
-  const [selectedModel, setSelectedModel] = useState('qwen2.5-coder:3b')
+  const [selectedModel, setSelectedModel] = useState('lightning:lightning-ai/gpt-oss-20b')
   const [showSettings, setShowSettings] = useState(false)
   const [editableSummary, setEditableSummary] = useState('')
 
