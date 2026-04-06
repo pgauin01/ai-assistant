@@ -98,6 +98,23 @@ function App() {
     isLiveTranscribingRef.current = isLiveTranscribing
   }, [isLiveTranscribing])
 
+  // --- NEW: Listen for Global Scroll Hotkeys ---
+  useEffect(() => {
+    if (window.api && window.api.onScrollAction) {
+      const cleanup = window.api.onScrollAction((direction) => {
+        if (transcriptRef.current) {
+          // 300px is a smooth, readable jump. Increase to 400 for faster scrolling.
+          const scrollAmount = 300
+          transcriptRef.current.scrollBy({
+            top: direction === 'down' ? scrollAmount : -scrollAmount,
+            behavior: 'smooth'
+          })
+        }
+      })
+      return () => cleanup?.()
+    }
+  }, [])
+
   useEffect(() => {
     let pollInterval
 
@@ -544,21 +561,19 @@ First, compare the "User Summary" and the "Raw Audio Transcript" (if both exist)
 Rules:
 1. NO chatbot fluff. NO introductory sentences. Start immediately with heading 1.
 2. Format EXACTLY with these headings:
-   ### 1. Intent Evaluation
-   ### 2. The Overarching Goal
-   ### 3. The Current Pivot & Cheat Sheet
-   ### 4. Architect Follow-Ups
-   ### 5. Interview Category
+   ### 1. The True Intent
+   ### 2. The Current Pivot & Cheat Sheet
+   ### 3. Architect Follow-Ups
+   ### 4. Category
 
-3. Under "Intent Evaluation", state what the interviewer is focusing on RIGHT NOW. If they use misleading words (like "design" when asking about metrics), explicitly call out the true intent. If a Hard Pivot occurred, explicitly state: "The interviewer has moved to a brand new question."
-4. Under "Interview Category", output EXACTLY ONE tag based on the CURRENT Question:
+3. Under "The True Intent", write EXACTLY 1 to 2 clear sentences extracting the main task. CRITICAL: If they use misleading words (like "design" when asking about metrics), explicitly call out the true intent here. If a Hard Pivot occurred, explicitly state: "[HARD PIVOT] The interviewer has moved to a brand new question: [New Task]."
+4. Under "Category", output EXACTLY ONE tag based on the CURRENT Question:
    - [CODING] (Algorithms, data structures, writing code)
    - [STRATEGY] (Product metrics, evaluating success, user satisfaction, telemetry. CRITICAL: If they ask HOW TO MEASURE or EVALUATE something, it is ALWAYS [STRATEGY].)
    - [CONCEPT] (Explaining how a technology works, comparing tools, selecting a specific technology like a database, or discussing trade-offs/criteria for a single component. CRITICAL: Use this if they ask "Which tool should we use and why?")
    - [SYSTEM DESIGN] (End-to-end technical architecture, system scaling, connecting APIs, drawing flowcharts. CRITICAL: Do NOT use this tag if they are just asking you to compare tools or list selection criteria for a single component.)
-5. Under "The Overarching Goal", write EXACTLY 1 clear sentence extracting the main task. (If a Hard Pivot occurred, state the NEW main task here).
-6. Under "The Current Pivot & Cheat Sheet", first write EXACTLY 1 bolded sentence stating what they are asking for right this second. Immediately below that, write EXACTLY 3 short bullet points in a first-person spoken tone that the candidate can read directly out loud to answer it.
-7. Under "Architect Follow-Ups", write 2 highly intelligent clarifying questions tailored to the CURRENT question.
+5. Under "The Current Pivot & Cheat Sheet", first write EXACTLY 1 bolded sentence stating what they are asking for right this second. Immediately below that, write EXACTLY 3 short bullet points in a first-person spoken tone that the candidate can read directly out loud to answer it.
+6. Under "Architect Follow-Ups", write 2 highly intelligent clarifying questions tailored to the CURRENT question.
 
 Context Provided:
 ${contextBlock}`
@@ -567,17 +582,18 @@ ${contextBlock}`
       case 'design':
         displayCommand = 'System Design'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a Senior-level SYSTEM DESIGN architecture designed specifically as a SPOKEN INTERVIEW SCRIPT.
+Task: Provide a SYSTEM DESIGN architecture designed specifically as a SPOKEN INTERVIEW SCRIPT.
 
 CRITICAL CONTEXT RULE: 
-If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH regarding the core question. Use the Raw Transcript ONLY to hunt for extra technical constraints (e.g., scale, latency, specific tech stack) that might have been left out of the summary.
+If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary (which may contain OCR text) is the ABSOLUTE TRUTH regarding the core question. Use the Raw Transcript ONLY to hunt for extra technical constraints.
 
 Rules:
-1. Tone & Style: Write exactly as a Senior Engineer speaking naturally in a live interview. Use first-person ("I would start by...", "For the database, I chose..."). Use smooth, conversational paragraphs. Do NOT use dense, robotic bullet points.
-2. Format EXACTLY with these headings:
+1. Tone & Style: Act as a pragmatic Senior Software Engineer with ~6 years of hands-on experience. Speak in a grounded, practical tone. Avoid grandiose 'Principal Architect' enterprise jargon (e.g., do not talk about "multi-year organizational migrations" or "abstract platform meshes"). 
+2. Use collaborative phrasing ("I'd want to double-check the exact read-volume..."). CRITICAL: Actively suggest simpler, 'good enough' alternatives for early-stage scaling (e.g., "We could use Flink here, but honestly a simple Lambda might be enough for V1"). Do not sound like an overly confident textbook. Focus on getting the job done efficiently.
+3. Format EXACTLY with these headings:
    ### 1. High-Level Architecture (Spoken overview)
-   ### 2. Architecture Diagram
-   ### 3. End-to-End Data Flow (Conversational walkthrough)
+   ### 2. End-to-End Data Flow (Conversational walkthrough)
+   ### 3. Architecture Diagram
    ### 4. Database Strategy (Spoken justification)
    ### 5. Scalability & Bottlenecks
 3. Under "Architecture Diagram", you MUST provide a valid Mermaid.js flowchart. 
@@ -594,54 +610,50 @@ Rules:
 Context Provided:
 ${contextBlock}`
         break
+        break
 
       // 4. CODING DEEP DIVE ANSWER
       case 'coding':
         displayCommand = 'Coding Deep Dive'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a Senior-level coding solution or explanation designed specifically as a SPOKEN INTERVIEW SCRIPT.
+Task: Provide a coding solution or explanation designed specifically as a SPOKEN INTERVIEW SCRIPT.
 
 CRITICAL CONTEXT RULE: 
-If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH regarding the core question. Use the Raw Transcript to hunt for extra technical constraints or to detect if this is a FOLLOW-UP question.
+If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH. Use the Raw Transcript to detect if this is a FOLLOW-UP question.
 
 Rules:
-1. Tone & Style: Write exactly as a Senior Engineer speaking naturally. Use first-person ("Since we need O(N) time, I'm using..."). Use smooth paragraphs.
-2. ZERO IMPORTS OR LIBRARIES: Solve problems using strictly built-in language features.
-3. DYNAMIC FORMATTING: 
-   - IF the interviewer is asking to solve a new problem: Format EXACTLY with these 3 headings: ### 1. Optimal Approach, ### 2. Time & Space Complexity, ### 3. Code Implementation.
-   - IF the interviewer is asking a FOLLOW-UP question about code already written (e.g., asking for time complexity, edge cases, or optimizations): DO NOT generate a code block. Format EXACTLY with one heading: ### 1. Spoken Explanation. Write a 2-paragraph conversational answer.
-4. Code Block Rules (Only if generating code):
-   - Wrap the code in a standard Markdown code block with proper newlines (\\n).
-   - Embed your narrative DIRECTLY inside the code block as highly detailed inline comments.
-   - Include an "Example Usage" section at the bottom.
-5. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after finishing.
-6. NO tables. NO chatbot fluff.
+1. Tone & Style: Act as a pragmatic Senior Software Engineer with ~6 years of experience. Use first-person ("Since we need O(N) time, I'd reach for...").
+2. Explain trade-offs practically. Mention that while a hyper-optimized solution exists, you generally prefer readable, maintainable code for the team unless performance is a strict bottleneck.
+3. ZERO IMPORTS OR LIBRARIES: Solve problems using strictly built-in language features.
+4. DYNAMIC FORMATTING: 
+   - IF solving a new problem: Format EXACTLY with: ### 1. Optimal Approach, ### 2. Time & Space Complexity, ### 3. Code Implementation.
+   - IF answering a FOLLOW-UP: DO NOT generate a code block unless asked to write new code. Format EXACTLY with: ### 1. Spoken Explanation. Write a 2-paragraph conversational answer.
+5. Code Block Rules: Wrap code in standard Markdown with proper newlines. Embed your narrative inside the code as highly detailed inline comments. Include an "Example Usage" section.
+6. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after finishing. NO chatbot fluff.
 
 Context Provided:
-\${contextBlock}`
-        break
+${contextBlock}`
         break
 
       // 5. STRATEGY, METRICS & PRODUCT ANSWER
       case 'strategy':
         displayCommand = 'Strategy & Metrics'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a Senior-level strategic breakdown for the product, metrics, or evaluation question designed specifically as a SPOKEN INTERVIEW SCRIPT.
+Task: Provide a strategic breakdown for the product, metrics, or evaluation question designed specifically as a SPOKEN INTERVIEW SCRIPT.
 
 CRITICAL CONTEXT RULE: 
-If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH regarding the core question. Use the Raw Transcript ONLY to hunt for extra technical constraints (e.g., scale, latency, specific tech stack) that might have been left out of the summary.
+If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH. Use the Raw Transcript ONLY for extra constraints.
 
 Rules:
-1. Tone & Style: Write exactly as a Senior Engineer or Product Manager speaking naturally in a live interview. Use first-person ("I would approach this by...", "The primary metric I'd track is..."). Use smooth, conversational paragraphs. Do NOT use dense, robotic bullet points.
-2. Focus heavily on telemetry, explicit vs implicit signals, user behavior, and edge cases, but explain them conversationally.
+1. Tone & Style: Act as a pragmatic Senior Engineer or hands-on Tech Lead (~6 years experience). Use collaborative, grounded phrasing ("A pragmatic way I've handled this in production is..."). Do NOT sound like a disconnected VP of Product.
+2. Focus heavily on practical telemetry (e.g., Datadog/CloudWatch metrics), realistic edge cases, and metrics that actually impact the engineering team (error rates, latency spikes, realistic user drop-off).
 3. Format EXACTLY with these headings:
    ### 1. Core Strategy (Spoken approach to the problem)
-   ### 2. Edge Cases & Risks (Conversational walkthrough of pitfalls)
+   ### 2. Edge Cases & Risks (Conversational walkthrough of real-world pitfalls)
    ### 3. Explicit Metrics (Spoken definitions of what to track)
    ### 4. Implicit Metrics (Behavioral proxies explained naturally)
 4. DO NOT USE TABLES. Write a natural, spoken comparison.
-5. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after section 4.
-6. NO chatbot fluff. NO introductory sentences. NO code snippets.
+5. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after section 4. NO chatbot fluff.
 
 Context Provided:
 ${contextBlock}`
@@ -650,21 +662,22 @@ ${contextBlock}`
       case 'concept':
         displayCommand = 'Technical Deep Dive'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a Senior-level TECHNICAL DEEP DIVE designed specifically as a SPOKEN INTERVIEW SCRIPT. 
+Task: Provide a TECHNICAL DEEP DIVE designed specifically as a SPOKEN INTERVIEW SCRIPT. 
 
 CRITICAL CONTEXT RULE: 
-If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH regarding the core question. Use the Raw Transcript ONLY to hunt for extra technical constraints (e.g., scale, latency, specific tech stack) that might have been left out of the summary.
+If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH. Use the Raw Transcript ONLY for extra constraints.
 
 Rules:
-1. Tone & Style: Write exactly as a Senior Engineer speaking naturally in a live interview. Use first-person ("I would...", "In my experience..."). Use smooth, conversational phrasing. Do NOT use dense, robotic bullet points or fragmented sentences.
-2. Format EXACTLY with these headings:
+1. Tone & Style: Act as a pragmatic Senior Engineer (~6 years experience). Speak smoothly and naturally.
+2. Compare tools based on operational reality, developer velocity, and team bandwidth. (e.g., "If my team doesn't have dedicated DevOps bandwidth, I almost always prefer the managed service, even if it costs a bit more..."). Avoid suggesting massive custom-built platforms.
+3. Format EXACTLY with these headings:
    ### 1. The Elevator Pitch (Your opening statement)
    ### 2. Core Mechanics (Explain how it works conversationally)
    ### 3. Top Options & Trade-offs
-   ### 4. Production Example (Walk them through a scenario)
-3. Under "Top Options & Trade-offs", DO NOT USE A TABLE. Instead, write a natural, spoken comparison of 3 to 4 top tools or approaches. Explain the trade-offs exactly as you would speak them to a manager (e.g., "If we want a managed service, I'd go with Pinecone because... but if we need to self-host to save money, Milvus or Qdrant are better...").   
-4. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after section 4.
-5. NO chatbot fluff. Start immediately with the first heading.
+   ### 4. Production Example (Walk them through a realistic scenario)
+4. Under "Top Options & Trade-offs", DO NOT USE A TABLE. Write a natural, spoken comparison of 3 tools. 
+5. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after section 4. NO chatbot fluff.
+
 Context Provided:
 ${contextBlock}`
         break
@@ -673,6 +686,23 @@ ${contextBlock}`
     // 4. Send the command to the AI
     await sendTextMessage(displayCommand, augmentedPrompt, actionType)
   }
+
+  useEffect(() => {
+    if (window.api && window.api.onTriggerAction) {
+      const cleanup = window.api.onTriggerAction((actionType) => {
+        if (actionType === 'full_analysis') {
+          // Prevent triggering if a request is already in flight
+          if (!isThinking) {
+            console.log('🔥 Stealth Hotkey Triggered: Full Analysis')
+            handleContextualAction('full_analysis')
+          }
+        }
+      })
+      return () => cleanup?.()
+    }
+
+    return undefined
+  }, [isThinking, handleContextualAction])
 
   const closeOverlay = () => {
     setInput('')
@@ -751,6 +781,11 @@ ${contextBlock}`
   const sendTextMessage = async (displayCommand, augmentedPrompt = null, actionType = null) => {
     const payloadText = augmentedPrompt || displayCommand
     const text = payloadText.trim()
+
+    if (!text) {
+      showMicToast('Cannot send an empty command.')
+      return
+    }
 
     // 1. Handle Exit Command
     if (text.toLowerCase() === '/exit') {

@@ -54,7 +54,7 @@ function createWindow() {
   // Hides the window from screen capture and screen sharing.
   mainWindow.setContentProtection(true)
   mainWindow.setIgnoreMouseEvents(true, { forward: true })
-  // mainWindow.webContents.openDevTools({ mode: 'detach' })
+  mainWindow.webContents.openDevTools({ mode: 'detach' })
 
   // Start in "click-through" mode
   mainWindow.setIgnoreMouseEvents(true, { forward: true })
@@ -448,8 +448,14 @@ app.whenReady().then(() => {
 
   createWindow()
 
+  const registerShortcut = (accelerator, handler) => {
+    const registered = globalShortcut.register(accelerator, handler)
+    console.log(`[shortcut] ${accelerator} registered: ${registered}`)
+    return registered
+  }
+
   // --- THE MAGIC SHORTCUT ---
-  globalShortcut.register('CommandOrControl+Shift+Space', () => {
+  registerShortcut('CommandOrControl+Shift+Space', () => {
     if (mainWindow.isFocused()) {
       // Hide and restore click-through
       mainWindow.hide()
@@ -464,6 +470,26 @@ app.whenReady().then(() => {
     }
   })
 
+  // --- NEW: Scroll Hotkeys ---
+  registerShortcut('CommandOrControl+2', () => {
+    if (mainWindow) mainWindow.webContents.send('scroll-action', 'down')
+  })
+  registerShortcut('CommandOrControl+num2', () => {
+    if (mainWindow) mainWindow.webContents.send('scroll-action', 'down')
+  })
+
+  // --- NEW: Trigger Full Analysis Hotkey ---
+  registerShortcut('CommandOrControl+num5', () => {
+    if (mainWindow) mainWindow.webContents.send('trigger-action', 'summary')
+  })
+
+  registerShortcut('CommandOrControl+8', () => {
+    if (mainWindow) mainWindow.webContents.send('scroll-action', 'up')
+  })
+  registerShortcut('CommandOrControl+num8', () => {
+    if (mainWindow) mainWindow.webContents.send('scroll-action', 'up')
+  })
+
   // Listen for React telling us to hide (e.g., when user presses Escape or Enter)
   ipcMain.on('hide-overlay', () => {
     mainWindow.hide()
@@ -471,14 +497,14 @@ app.whenReady().then(() => {
   })
 
   // 1. Register the Global Hotkey (Ctrl+Space or Cmd+Space)
-  globalShortcut.register('CommandOrControl+Shift+Down', () => {
+  registerShortcut('CommandOrControl+Shift+Down', () => {
     // 2. Send an IPC message to the React frontend
     if (mainWindow) {
       mainWindow.webContents.send('toggle-mic')
     }
   })
 
-  globalShortcut.register('CommandOrControl+Shift+Up', () => {
+  registerShortcut('CommandOrControl+Shift+Up', () => {
     if (mainWindow) {
       mainWindow.show()
       mainWindow.focus()
@@ -486,7 +512,7 @@ app.whenReady().then(() => {
     }
   })
 
-  globalShortcut.register('CommandOrControl+Q', () => {
+  registerShortcut('CommandOrControl+Q', () => {
     if (mainWindow) {
       mainWindow.show()
       mainWindow.setIgnoreMouseEvents(false)
@@ -495,12 +521,11 @@ app.whenReady().then(() => {
     }
   })
 
-  const moondreamShortcutRegistered = globalShortcut.register('CommandOrControl+W', () => {
+  registerShortcut('CommandOrControl+W', () => {
     if (mainWindow) {
       mainWindow.webContents.send('trigger-moondream')
     }
   })
-  console.log(`[shortcut] CommandOrControl+W registered: ${moondreamShortcutRegistered}`)
 })
 
 app.on('will-quit', () => {

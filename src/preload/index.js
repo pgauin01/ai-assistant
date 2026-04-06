@@ -36,6 +36,16 @@ const api = {
     const listener = (event, chunk) => callback(chunk)
     ipcRenderer.on('live-system-audio-chunk', listener)
     return () => ipcRenderer.removeListener('live-system-audio-chunk', listener)
+  },
+  onScrollAction: (callback) => {
+    const listener = (event, direction) => callback(direction)
+    ipcRenderer.on('scroll-action', listener)
+    return () => ipcRenderer.removeListener('scroll-action', listener)
+  },
+  onTriggerAction: (callback) => {
+    const listener = (event, actionType) => callback(actionType)
+    ipcRenderer.on('trigger-action', listener)
+    return () => ipcRenderer.removeListener('trigger-action', listener)
   }
 }
 
