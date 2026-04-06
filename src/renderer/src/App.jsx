@@ -548,6 +548,22 @@ function App() {
     let augmentedPrompt = ''
 
     switch (actionType) {
+      case 'quick_answer':
+        displayCommand = 'Quick Answer'
+        augmentedPrompt = `[Quick Command: QUICK_ANSWER]
+You are a pragmatic Senior Software Engineer. The user needs an immediate, on-the-spot answer to survive a live conversation or interview.
+
+Task:
+${contextBlock}
+
+CRITICAL RULES FOR SPEED:
+1. EXTREME BREVITY: Your entire response MUST be 4 sentences or less. CRITICAL: Use short, punchy sentences (max 15-20 words per sentence). Write exactly like a spoken conversation, do NOT output dense, robotic run-on sentences.
+2. NO FORMATTING OVERHEAD: Do NOT use markdown headings, code blocks, or lists. Output plain text only. 
+3. DIRECT ANSWER FIRST: Sentence 1 must definitively answer what the code does, what the bug is, or what the core concept is. 
+4. THE "WHY" SECOND: Sentence 2 and 3 should state the "why" or the immediate fix in a grounded, conversational tone.
+5. NO FLUFF: No greetings, no "Here is the answer." Start typing the solution on the very first word. 
+6. PERSONA: Sound like a colleague whispering the answer to you across the desk. Use collaborative phrasing ("Looks like...", "I'd just...").`
+        break
       case 'full_analysis':
         displayCommand = 'Full Interview Analysis'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
@@ -610,7 +626,6 @@ Rules:
 Context Provided:
 ${contextBlock}`
         break
-        break
 
       // 4. CODING DEEP DIVE ANSWER
       case 'coding':
@@ -626,10 +641,12 @@ Rules:
 2. Explain trade-offs practically. Mention that while a hyper-optimized solution exists, you generally prefer readable, maintainable code for the team unless performance is a strict bottleneck.
 3. ZERO IMPORTS OR LIBRARIES: Solve problems using strictly built-in language features.
 4. DYNAMIC FORMATTING: 
-   - IF solving a new problem: Format EXACTLY with: ### 1. Optimal Approach, ### 2. Time & Space Complexity, ### 3. Code Implementation.
+   - IF solving a new problem: Format EXACTLY with: ### 1. Optimal Approach, ### 2. Detailed Complexity Analysis, ### 3. Code Implementation.
    - IF answering a FOLLOW-UP: DO NOT generate a code block unless asked to write new code. Format EXACTLY with: ### 1. Spoken Explanation. Write a 2-paragraph conversational answer.
-5. Code Block Rules: Wrap code in standard Markdown with proper newlines. Embed your narrative inside the code as highly detailed inline comments. Include an "Example Usage" section.
-6. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after finishing. NO chatbot fluff.
+5. COMPLEXITY RULE: Under "### 2. Detailed Complexity Analysis",you MUST start by explicitly stating the final Big-O notation in bold (e.g., "**Time Complexity:** O(N * M)", "**Space Complexity:** O(N)"),Immediately following that You MUST write a detailed, conversational paragraph breaking down EXACTLY where the time and space costs come from. Discuss memory allocation bottlenecks (like string immutability), worst-case degradation, and why this specific approach scales safely to the constraints mentioned (e.g., 1 million records).
+6. Code Block Rules: Wrap code in standard Markdown with proper newlines. Embed your narrative inside the code as highly detailed inline comments. Include an "Example Usage" section.
+
+7. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after finishing. NO chatbot fluff.
 
 Context Provided:
 ${contextBlock}`
@@ -637,24 +654,26 @@ ${contextBlock}`
 
       // 5. STRATEGY, METRICS & PRODUCT ANSWER
       case 'strategy':
-        displayCommand = 'Strategy & Metrics'
+        displayCommand = 'Strategy & Metrics deep dive'
         augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a strategic breakdown for the product, metrics, or evaluation question designed specifically as a SPOKEN INTERVIEW SCRIPT.
+Task: Provide a product strategy and metrics explanation designed specifically as a SPOKEN INTERVIEW SCRIPT.
 
 CRITICAL CONTEXT RULE: 
-If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH. Use the Raw Transcript ONLY for extra constraints.
+If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH. Use the Raw Transcript to detect if this is a FOLLOW-UP question.
 
 Rules:
-1. Tone & Style: Act as a pragmatic Senior Engineer or hands-on Tech Lead (~6 years experience). Use collaborative, grounded phrasing ("A pragmatic way I've handled this in production is..."). Do NOT sound like a disconnected VP of Product.
-2. Focus heavily on practical telemetry (e.g., Datadog/CloudWatch metrics), realistic edge cases, and metrics that actually impact the engineering team (error rates, latency spikes, realistic user drop-off).
-3. Format EXACTLY with these headings:
-   ### 1. Core Strategy (Spoken approach to the problem)
-   ### 2. Edge Cases & Risks (Conversational walkthrough of real-world pitfalls)
-   ### 3. Explicit Metrics (Spoken definitions of what to track)
-   ### 4. Implicit Metrics (Behavioral proxies explained naturally)
-4. DO NOT USE TABLES. Write a natural, spoken comparison.
-5. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after section 4. NO chatbot fluff.
-
+1. Tone & Style: Act as a pragmatic Senior Software Engineer with ~6 years of experience. Act as the CANDIDATE answering the interviewer. Use first-person ("To measure this, I would track..."). Do NOT act like an interviewer grading a candidate.
+2. NO chatbot fluff. Start immediately with heading 1.
+3. DYNAMIC FORMATTING: Format EXACTLY with these markdown headings IN THIS EXACT ORDER:
+   ### 1. Core Strategy
+   ### 2. Explicit Metrics (The Telemetry)
+   ### 3. Implicit Metrics (User Behavior)
+   ### 4. Edge Cases & Risks
+4. Under "Core Strategy", write a 4-sentence conversational approach on how you would roll this out and measure its success (e.g., "I'd start with a shadow rollout or A/B test before committing..."). Do NOT describe the system architecture here.
+5. Under "Explicit Metrics", provide a Markdown bulleted list of 4 specific technical metrics you would monitor. CRITICAL: You MUST format each bullet exactly like this: * **[Metric Name]:** [Spoken explanation of why].
+6. Under "Implicit Metrics", provide a Markdown bulleted list of 3 specific user-behavior metrics. CRITICAL: You MUST format each bullet exactly like this: * **[Metric Name]:** [Spoken explanation].
+7. Under "Edge Cases & Risks", provide a 3-sentence explanation of a real-world pitfall (e.g., "One risk here is cold-start latency causing users to bounce...").
+8. FINAL FORMATTING CHECK: Look at Sections 2 and 3. You MUST use standard Markdown bullet points (*) and you MUST bold the metric name (**Name**). If you output "MetricName: explanation" instead of "* MetricName: explanation", you have failed.
 Context Provided:
 ${contextBlock}`
         break
@@ -690,11 +709,11 @@ ${contextBlock}`
   useEffect(() => {
     if (window.api && window.api.onTriggerAction) {
       const cleanup = window.api.onTriggerAction((actionType) => {
-        if (actionType === 'full_analysis') {
+        if (actionType === 'quick_answer') {
           // Prevent triggering if a request is already in flight
           if (!isThinking) {
             console.log('🔥 Stealth Hotkey Triggered: Full Analysis')
-            handleContextualAction('full_analysis')
+            handleContextualAction('quick_answer')
           }
         }
       })
@@ -1656,12 +1675,12 @@ ${contextBlock}`
             >
               📝 Analysis
             </button>
-            {/* <button
-              onClick={() => handleContextualAction('quick')}
+            <button
+              onClick={() => handleContextualAction('quick_answer')}
               className="px-3 py-1.5 bg-blue-900/50 hover:bg-blue-800 text-blue-200 text-xs font-semibold rounded-md border border-blue-700 transition-colors"
             >
               ⚡ Quick Answer
-            </button> */}
+            </button>
             <button
               onClick={() => handleContextualAction('concept')}
               className="px-3 py-1.5 bg-amber-900/50 hover:bg-amber-800 text-amber-200 text-xs font-semibold rounded-md border border-amber-700 transition-colors"

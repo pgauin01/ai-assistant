@@ -25,8 +25,16 @@ CRITICAL RULES for SPEED & STYLE:
 6. CODE FORMATTING: All code MUST be wrapped in standard Markdown code blocks. 
    - CRITICAL: You MUST use proper newlines (\n) for every line of code. Do NOT squash code onto a single line.
    - Do NOT wrap plain English explanations inside code blocks.
-7. CRITICAL: DO NOT USE TABLES. Present all comparisons and metrics as structured paragraphs or simple bulleted lists.
-8. CRITICAL: If it is a System Design question, DO NOT generate any application code. Output only the concise conceptual explanations.
+7.MERMAID DIAGRAMS (For System Design): If the task involves System Design, Architecture, or explaining a structural concept, you MUST include a valid Mermaid.js flowchart (`mermaid` code block) representing the system.
+   - CRITICAL: You MUST wrap the diagram EXACTLY in markdown code blocks like this:
+   \`\`\`mermaid
+   flowchart TD
+   A["Node 1"] --> B["Node 2"]
+   \`\`\`
+   - Use double quotes around all node names to prevent syntax errors.
+   - CRITICAL: For any node label longer than 3 words, you MUST insert a <br/> tag to logically wrap the text to the next line (e.g., A["Stream Processor:<br/>Quality Eval"]). Do not let single lines get too long.
+8. CRITICAL: DO NOT USE TABLES. Present all comparisons and metrics as structured paragraphs or simple bulleted lists.
+9. CRITICAL: If it is a System Design question, DO NOT generate any application code. Output only the concise conceptual explanations.
 
 """
 
@@ -167,7 +175,7 @@ If the extraction contains starter code, asks for an algorithm, or says "Write a
 2. Write clean, maintainable production code.
 3. Format EXACTLY with these headings:
    ### Implementation Strategy
-   [Briefly explain the optimal approach, time/space complexity, and why you chose it]
+   [Briefly explain the optimal approach,also explain time/space complexity briefly, and why you chose it]
    ### Code
    ```[language]
    // Your feature implementation here with example usage if applicable

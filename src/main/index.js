@@ -54,7 +54,7 @@ function createWindow() {
   // Hides the window from screen capture and screen sharing.
   mainWindow.setContentProtection(true)
   mainWindow.setIgnoreMouseEvents(true, { forward: true })
-  mainWindow.webContents.openDevTools({ mode: 'detach' })
+  // mainWindow.webContents.openDevTools({ mode: 'detach' })
 
   // Start in "click-through" mode
   mainWindow.setIgnoreMouseEvents(true, { forward: true })
@@ -450,7 +450,7 @@ app.whenReady().then(() => {
 
   const registerShortcut = (accelerator, handler) => {
     const registered = globalShortcut.register(accelerator, handler)
-    console.log(`[shortcut] ${accelerator} registered: ${registered}`)
+    // console.log(`[shortcut] ${accelerator} registered: ${registered}`)
     return registered
   }
 
@@ -480,12 +480,12 @@ app.whenReady().then(() => {
 
   // Works for the standard top-row 5 key
   registerShortcut('CommandOrControl+5', () => {
-    if (mainWindow) mainWindow.webContents.send('trigger-action', 'full_analysis')
+    if (mainWindow) mainWindow.webContents.send('trigger-action', 'quick_answer')
   })
 
   // Works for the Numeric Keypad 5 key
   registerShortcut('CommandOrControl+num5', () => {
-    if (mainWindow) mainWindow.webContents.send('trigger-action', 'full_analysis')
+    if (mainWindow) mainWindow.webContents.send('trigger-action', 'quick_answer')
   })
 
   registerShortcut('CommandOrControl+8', () => {
