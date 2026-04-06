@@ -145,6 +145,7 @@ except Exception as e:
 
 OLLAMA_BASE_URL = "http://localhost:11434"
 OLLAMA_MODEL = "qwen2.5-coder:3b"
+
 # OLLAMA_MODEL = "gemini-3-flash-preview:latest"
 
 
