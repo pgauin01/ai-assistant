@@ -13,7 +13,7 @@ This project is a highly optimized Retrieval-Augmented Generation (RAG) pipeline
 
 Here is the exact workflow architecture:
 
-1. **Academic Data Ingestion** Complex academic documents (PDF syllabi, research papers, and DOCX policy guidelines) are ingested from the institution's secure repository. The pipeline utilizes advanced document loaders (like Unstructured) equipped with layout parsing to preserve the semantic structure of multi-column research papers, headers, and tabular grading rubrics.
+1. **Academic Data Ingestion:** Complex academic documents (PDF syllabi, research papers, and DOCX policy guidelines) are ingested from the institution's secure repository. The pipeline utilizes advanced document loaders (like Unstructured) equipped with layout parsing to preserve the semantic structure of multi-column research papers, headers, and tabular grading rubrics.
 2. **Semantic Processing:** Raw data is sliced using a `RecursiveCharacterTextSplitter` (chunk size 1000, overlap 200) employing regex sentence boundaries. Contextual metadata tags (e.g., `open_source_model`) are injected based on source URLs.
 3. **Stage 1 Retrieval (Hybrid Ensemble):** User queries run through a dual-engine retriever. **FAISS** (powered by `all-MiniLM-L6-v2`) handles dense semantic search, while **BM25** handles sparse keyword matching. Results are merged with a 70/30 weight distribution prioritizing semantics.
 4. **Stage 2 Retrieval (Cross-Encoder Reranking):** The top 10 merged results are passed to a computationally heavy Cross-Encoder (`BAAI/bge-reranker-base`). The model re-scores the query-document pairs, aggressively filtering out noise and passing only the absolute top 3 highest-fidelity chunks forward.
