@@ -470,29 +470,24 @@ app.whenReady().then(() => {
     }
   })
 
-  // --- NEW: Scroll Hotkeys ---
-  registerShortcut('CommandOrControl+2', () => {
-    if (mainWindow) mainWindow.webContents.send('scroll-action', 'down')
-  })
-  registerShortcut('CommandOrControl+num2', () => {
-    if (mainWindow) mainWindow.webContents.send('scroll-action', 'down')
-  })
-
   // Works for the standard top-row 5 key
-  registerShortcut('CommandOrControl+5', () => {
+  registerShortcut('CommandOrControl+Shift+5', () => {
     if (mainWindow) mainWindow.webContents.send('trigger-action', 'quick_answer')
   })
 
   // Works for the Numeric Keypad 5 key
-  registerShortcut('CommandOrControl+num5', () => {
+  registerShortcut('CommandOrControl+Shift+num5', () => {
     if (mainWindow) mainWindow.webContents.send('trigger-action', 'quick_answer')
   })
 
-  registerShortcut('CommandOrControl+8', () => {
-    if (mainWindow) mainWindow.webContents.send('scroll-action', 'up')
+  // Works for the standard top-row 5 key
+  registerShortcut('CommandOrControl+Shift+4', () => {
+    if (mainWindow) mainWindow.webContents.send('trigger-action', 'full_analysis')
   })
-  registerShortcut('CommandOrControl+num8', () => {
-    if (mainWindow) mainWindow.webContents.send('scroll-action', 'up')
+
+  // Works for the Numeric Keypad 5 key
+  registerShortcut('CommandOrControl+Shift+num4', () => {
+    if (mainWindow) mainWindow.webContents.send('trigger-action', 'full_analysis')
   })
 
   // Listen for React telling us to hide (e.g., when user presses Escape or Enter)

@@ -766,8 +766,25 @@ ${contextBlock}`
         if (actionType === 'quick_answer') {
           // Prevent triggering if a request is already in flight
           if (!isThinking) {
-            console.log('🔥 Stealth Hotkey Triggered: Full Analysis')
+            console.log('🔥 Stealth Hotkey Triggered Quick Answer')
             handleContextualAction('quick_answer')
+          }
+        }
+      })
+      return () => cleanup?.()
+    }
+
+    return undefined
+  }, [isThinking, handleContextualAction])
+
+  useEffect(() => {
+    if (window.api && window.api.onTriggerAction) {
+      const cleanup = window.api.onTriggerAction((actionType) => {
+        if (actionType === 'full_analysis') {
+          // Prevent triggering if a request is already in flight
+          if (!isThinking) {
+            console.log('🔥 Stealth Hotkey Triggered: Full Analysis')
+            handleContextualAction('full_analysis')
           }
         }
       })
