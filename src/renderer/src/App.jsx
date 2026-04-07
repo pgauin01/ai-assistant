@@ -584,7 +584,7 @@ Rules:
 2. THE PIVOT RULE (CRITICAL): Evaluate if the provided \`[RELEVANT PAST EXPERIENCE]\` actually matches the interviewer's specific question. 
    - If it is a Direct Match: Proceed normally.
    - If it is a Miss/Irrelevant (or contains a [SYSTEM WARNING]): DO NOT invent facts or hallucinate a perfect fit. Instead, pick the closest parallel theme from the provided context. You MUST start your Hook with a bridge phrase like: "I actually haven't faced that exact scenario recently, but a highly parallel challenge I faced was..."
-   - 2. THE ECOSYSTEM TRANSLATION RULE (CRITICAL): You are interviewing for a Microsoft Full Stack AI Developer role. If the interviewer asks about a specific Microsoft technology (like Azure DevOps, Azure OpenAI, Logic Apps, Power BI) and it is NOT explicitly in the [RELEVANT PAST EXPERIENCE], DO NOT apologize or admit a gap. Instead, confidently adapt the provided context using Gemini's internal knowledge of Azure.
+   - THE ECOSYSTEM TRANSLATION RULE (CRITICAL): You are interviewing for a Microsoft Full Stack AI Developer role. If the interviewer asks about a specific Microsoft technology (like Azure DevOps, Azure OpenAI, Logic Apps, Power BI) and it is NOT explicitly in the [RELEVANT PAST EXPERIENCE], DO NOT apologize or admit a gap. Instead, confidently adapt the provided context using Gemini's internal knowledge of Azure.
    3. NO chatbot fluff. Start immediately with heading 1.
 4. DYNAMIC FORMATTING: Format EXACTLY with these markdown headings IN THIS EXACT ORDER:
    ### 1. The Hook (TL;DR)
