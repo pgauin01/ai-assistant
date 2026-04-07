@@ -4,7 +4,7 @@
 
 **Type:** B2B Retail Tech / E-commerce Platform
 **Role:** Lead / Senior Full-Stack Developer
-**Tech Stack:** React, Node.js, GraphQL, AWS EC2, PHP (Legacy)
+**Tech Stack:** React, Node.js, GraphQL, AWS EC2, PHP (Legacy),Vite (for ultra-fast HMR and optimized Rollup builds), Azure DevOps
 **Status:** Completed / Production
 
 ## System Architecture & Design
