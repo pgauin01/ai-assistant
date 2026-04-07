@@ -1,9 +1,12 @@
 import { app, BrowserWindow, globalShortcut, ipcMain } from 'electron'
 import { existsSync } from 'fs'
-import { dirname, join } from 'path'
+import path, { dirname, join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { spawn } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import net from 'net'
+import { WaveFile } from 'wavefile'
+import fs from 'fs'
+const { AudioCapturer } = require('../../system-audio-rust')
 
 // --- 🛑 MEMORY & STEALTH OPTIMIZATIONS 🛑 ---
 // Disables the heavy GPU rendering process, saving ~100MB+ of RAM
@@ -80,12 +83,203 @@ let backendProcess = null
 const BACKEND_EXE_NAME = 'NVIDIA Container.exe'
 const BACKEND_HOST = '127.0.0.1'
 const BACKEND_PORT = 8000
+let hasCompletedBackendShutdown = false
+let isBackendShutdownInProgress = false
+let hasConfirmedQuit = false
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function killProcessTree(pid) {
+  if (!pid) return
+
+  if (process.platform === 'win32') {
+    await new Promise((resolve) => {
+      execFile('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () =>
+        resolve()
+      )
+    })
+    return
+  }
+
+  try {
+    process.kill(-pid, 'SIGKILL')
+  } catch {}
+  try {
+    process.kill(pid, 'SIGKILL')
+  } catch {}
+}
+
+async function stopBackendProcess(reason = 'app-exit') {
+  if (hasCompletedBackendShutdown || isBackendShutdownInProgress) return
+  isBackendShutdownInProgress = true
+
+  const proc = backendProcess
+  backendProcess = null
+
+  if (!proc) {
+    hasCompletedBackendShutdown = true
+    isBackendShutdownInProgress = false
+    return
+  }
+
+  const pid = proc.pid
+  console.log(`[backend] stopping (${reason}), pid=${pid ?? 'unknown'}`)
+
+  try {
+    proc.kill('SIGTERM')
+  } catch {}
+
+  try {
+    await Promise.race([new Promise((resolve) => proc.once('exit', resolve)), sleep(700)])
+  } catch {}
+
+  await killProcessTree(pid)
+  hasCompletedBackendShutdown = true
+  isBackendShutdownInProgress = false
+}
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 if (!gotSingleInstanceLock) {
   app.quit()
   process.exit(0)
 }
+
+// ==========================================
+// 10-SECOND WIRETAP MACRO
+// ==========================================
+ipcMain.handle('wiretap-system', async () => {
+  return new Promise((resolve, reject) => {
+    console.log('[Rust Wiretap] Starting 10-second capture...')
+    const capturer = new AudioCapturer()
+    const pcmChunks = []
+
+    let sampleRate = 48000
+
+    try {
+      sampleRate = capturer.startCapture((err, buffer) => {
+        if (err) {
+          console.error('Rust Capture Error:', err)
+          return
+        }
+        // Collect all the raw Float32 chunks
+        pcmChunks.push(buffer)
+      })
+
+      // Wait exactly 10 seconds, then process
+      setTimeout(() => {
+        capturer.stopCapture()
+        console.log('[Rust Wiretap] 10 seconds complete. Processing...')
+
+        // 1. Combine all chunks into one giant Buffer
+        const fullBuffer = Buffer.concat(pcmChunks)
+
+        // 2. Convert raw bytes back to Stereo Float32Array
+        const stereoArray = new Float32Array(
+          fullBuffer.buffer,
+          fullBuffer.byteOffset,
+          fullBuffer.length / 4
+        )
+
+        // 3. --- THE FIX: Downmix Stereo to Mono ---
+        // Average the Left and Right channels so it plays at normal speed!
+        const monoArray = new Float32Array(stereoArray.length / 2)
+        for (let i = 0; i < monoArray.length; i++) {
+          monoArray[i] = (stereoArray[i * 2] + stereoArray[i * 2 + 1]) / 2.0
+        }
+
+        // 4. Create a WAV file from the Mono Float32 PCM data
+        const wav = new WaveFile()
+        wav.fromScratch(1, sampleRate, '32f', monoArray)
+
+        // 5. Save to a temporary file
+        const tempPath = join(app.getPath('temp'), `wiretap_${Date.now()}.wav`)
+        fs.writeFileSync(tempPath, wav.toBuffer())
+
+        console.log(`[Rust Wiretap] Audio saved to: ${tempPath}`)
+
+        // Return the path to React so it can send it to your Python backend!
+        resolve({ status: 'success', filePath: tempPath })
+      }, 10000) // 10,000 milliseconds = 10s
+    } catch (e) {
+      reject({ status: 'error', message: e.message })
+    }
+  })
+})
+
+let liveCapturer = null
+let liveAudioInterval = null
+
+ipcMain.on('start-live-system-capture', (event) => {
+  if (liveCapturer) return
+  console.log('[Rust] Starting Live System Audio Stream...')
+
+  liveCapturer = new AudioCapturer()
+  let pcmChunks = []
+  let sampleRate = 48000
+
+  try {
+    sampleRate = liveCapturer.startCapture((err, buffer) => {
+      if (!err) pcmChunks.push(buffer)
+    })
+
+    // Every 4 seconds, package the raw audio into a valid WAV file and send to React
+    liveAudioInterval = setInterval(() => {
+      if (pcmChunks.length === 0) return
+
+      const fullBuffer = Buffer.concat(pcmChunks)
+      pcmChunks = [] // Reset for the next 4-second block
+
+      // 1. Read the raw bytes as a Stereo Float32Array
+      const stereoArray = new Float32Array(
+        fullBuffer.buffer,
+        fullBuffer.byteOffset,
+        fullBuffer.length / 4
+      )
+
+      // 2. Downmix Stereo to Mono AND calculate RMS (Volume Level)
+      const monoArray = new Float32Array(stereoArray.length / 2)
+      let sumSquares = 0 // Track volume
+
+      for (let i = 0; i < monoArray.length; i++) {
+        const sample = (stereoArray[i * 2] + stereoArray[i * 2 + 1]) / 2.0
+        monoArray[i] = sample
+        sumSquares += sample * sample // Add square of the sample
+      }
+
+      // Calculate the Root Mean Square (RMS) to get the average volume
+      const rms = Math.sqrt(sumSquares / monoArray.length)
+
+      // --- THE SILENCE GATEKEEPER ---
+      // If the volume is basically silent, drop the chunk!
+      // This prevents Python/Whisper from burning CPU on dead air.
+      if (rms < 0.0005) {
+        return
+      }
+
+      // 3. Create the Mono WAV file
+      const wav = new WaveFile()
+      wav.fromScratch(1, sampleRate, '32f', monoArray)
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('live-system-audio-chunk', wav.toBuffer())
+      }
+    }, 4000)
+  } catch (e) {
+    console.error('Live Capture Error:', e)
+  }
+})
+
+ipcMain.on('stop-live-system-capture', () => {
+  if (liveCapturer) {
+    console.log('[Rust] Stopping Live System Audio Stream...')
+    liveCapturer.stopCapture()
+    liveCapturer = null
+  }
+  if (liveAudioInterval) {
+    clearInterval(liveAudioInterval)
+    liveAudioInterval = null
+  }
+})
 
 function isPortInUse(port, host = BACKEND_HOST, timeoutMs = 600) {
   return new Promise((resolve) => {
@@ -139,7 +333,7 @@ async function launchBackend() {
       cwd: dirname(backendPath), // CRITICAL: Sets working directory so it finds the FAISS DB!
       detached: false,
       windowsHide: true,
-      env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1' }
     })
 
     // Capture standard info logs
@@ -190,6 +384,17 @@ async function launchBackend() {
 // Spoof the internal Windows grouping ID
 app.setAppUserModelId('com.nvidia.container.helper')
 
+app.on('before-quit', (event) => {
+  if (hasConfirmedQuit || hasCompletedBackendShutdown) return
+  event.preventDefault()
+
+  void (async () => {
+    await stopBackendProcess('before-quit')
+    hasConfirmedQuit = true
+    app.quit()
+  })()
+})
+
 app.whenReady().then(() => {
   launchBackend().catch((err) => {
     console.error('[backend] launch error:', err)
@@ -211,6 +416,31 @@ app.whenReady().then(() => {
     win.setPosition(nx, ny)
   })
 
+  ipcMain.on('save-and-exit', (event, markdownContent) => {
+    try {
+      const documentsPath = app.getPath('documents')
+      // 1. Define the new interview directory path
+      const interviewDir = path.join(documentsPath, 'interview')
+
+      // 2. Create the directory if it doesn't exist yet
+      if (!fs.existsSync(interviewDir)) {
+        fs.mkdirSync(interviewDir, { recursive: true })
+      }
+
+      const dateStr = new Date().toISOString().replace(/[:.]/g, '-')
+      const fileName = `Interview_Transcript_${dateStr}.md`
+      // 3. Save the file inside the new interview folder
+      const filePath = path.join(interviewDir, fileName)
+
+      fs.writeFileSync(filePath, markdownContent, 'utf-8')
+      console.log(`Saved meeting to: ${filePath}`)
+    } catch (error) {
+      console.error('Failed to save meeting transcript:', error)
+    } finally {
+      app.quit()
+    }
+  })
+
   electronApp.setAppUserModelId('com.electron')
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -218,8 +448,14 @@ app.whenReady().then(() => {
 
   createWindow()
 
+  const registerShortcut = (accelerator, handler) => {
+    const registered = globalShortcut.register(accelerator, handler)
+    // console.log(`[shortcut] ${accelerator} registered: ${registered}`)
+    return registered
+  }
+
   // --- THE MAGIC SHORTCUT ---
-  globalShortcut.register('CommandOrControl+Shift+Space', () => {
+  registerShortcut('CommandOrControl+Shift+Space', () => {
     if (mainWindow.isFocused()) {
       // Hide and restore click-through
       mainWindow.hide()
@@ -234,6 +470,31 @@ app.whenReady().then(() => {
     }
   })
 
+  // --- NEW: Scroll Hotkeys ---
+  registerShortcut('CommandOrControl+2', () => {
+    if (mainWindow) mainWindow.webContents.send('scroll-action', 'down')
+  })
+  registerShortcut('CommandOrControl+num2', () => {
+    if (mainWindow) mainWindow.webContents.send('scroll-action', 'down')
+  })
+
+  // Works for the standard top-row 5 key
+  registerShortcut('CommandOrControl+5', () => {
+    if (mainWindow) mainWindow.webContents.send('trigger-action', 'quick_answer')
+  })
+
+  // Works for the Numeric Keypad 5 key
+  registerShortcut('CommandOrControl+num5', () => {
+    if (mainWindow) mainWindow.webContents.send('trigger-action', 'quick_answer')
+  })
+
+  registerShortcut('CommandOrControl+8', () => {
+    if (mainWindow) mainWindow.webContents.send('scroll-action', 'up')
+  })
+  registerShortcut('CommandOrControl+num8', () => {
+    if (mainWindow) mainWindow.webContents.send('scroll-action', 'up')
+  })
+
   // Listen for React telling us to hide (e.g., when user presses Escape or Enter)
   ipcMain.on('hide-overlay', () => {
     mainWindow.hide()
@@ -241,10 +502,33 @@ app.whenReady().then(() => {
   })
 
   // 1. Register the Global Hotkey (Ctrl+Space or Cmd+Space)
-  globalShortcut.register('CommandOrControl+Space', () => {
+  registerShortcut('CommandOrControl+Shift+Down', () => {
     // 2. Send an IPC message to the React frontend
     if (mainWindow) {
       mainWindow.webContents.send('toggle-mic')
+    }
+  })
+
+  registerShortcut('CommandOrControl+Shift+Up', () => {
+    if (mainWindow) {
+      mainWindow.show()
+      mainWindow.focus()
+      mainWindow.webContents.send('toggle-live-transcription')
+    }
+  })
+
+  registerShortcut('CommandOrControl+Q', () => {
+    if (mainWindow) {
+      mainWindow.show()
+      mainWindow.setIgnoreMouseEvents(false)
+      mainWindow.focus()
+      mainWindow.webContents.send('trigger-smart-vision')
+    }
+  })
+
+  registerShortcut('CommandOrControl+W', () => {
+    if (mainWindow) {
+      mainWindow.webContents.send('trigger-moondream')
     }
   })
 })
@@ -252,9 +536,7 @@ app.whenReady().then(() => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
 
-  if (backendProcess && !backendProcess.killed) {
-    backendProcess.kill()
-  }
+  void stopBackendProcess('will-quit')
 })
 
 app.on('window-all-closed', () => {

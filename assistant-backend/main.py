@@ -2,10 +2,9 @@
 import os
 import tempfile
 import warnings
-import base64
 from io import BytesIO
 
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -29,7 +28,10 @@ from prompts import (
     VISION_EXPLAIN_PROMPT,
     VISION_FIX_PROMPT,
     VISION_CREATE_PROMPT,
+    VISION_MCQ_PROMPT,
+    VISION_CLASSIFY_PROMPT
 )
+
 
 
 import tkinter as tk
@@ -38,9 +40,31 @@ import moondream as md
 import sys
 import threading
 from fastapi.responses import JSONResponse, StreamingResponse
-
+from contextlib import asynccontextmanager
+from typing import List
+from datetime import datetime
+from langchain_openai import ChatOpenAI
+from dotenv import load_dotenv
 import os
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # <--- ADD THIS FIX
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  
+# Determine the absolute path to the directory containing main.py / .env
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    # Running in production: find the .env file in the PyInstaller temp folder
+    base_path = sys._MEIPASS
+else:
+    # Running in development: find the .env file in the normal directory next to main.py
+    base_path = os.path.dirname(os.path.abspath(__file__))
+
+env_path = os.path.join(base_path, '.env')
+
+# Force load_dotenv to use the exact path
+load_dotenv(dotenv_path=env_path)
+BASE_KEY = os.getenv("BASE_KEY")
+BILLING_WORKSPACE = os.getenv("BILLING_WORKSPACE")
+
+# This is the magic fix: combine them for the Bearer token
+lit_api_key = f"{BASE_KEY}/{BILLING_WORKSPACE}"
+
 
 
 def load_env_file(path: str) -> None:
@@ -122,19 +146,54 @@ except Exception as e:
 OLLAMA_BASE_URL = "http://localhost:11434"
 OLLAMA_MODEL = "qwen2.5-coder:3b"
 
+# OLLAMA_MODEL = "gemini-3-flash-preview:latest"
+
+
+# testing purposes only - this class creates a full-screen transparent overlay that lets you draw a box to capture a screenshot region. You can then run OCR on that region to extract text from images of code, error messages, etc.
+import ctypes
+import tkinter as tk
+
+class RagQuery(BaseModel):
+    transcript: str
+
 
 class SnippingTool:
     def __init__(self):
         self.root = tk.Tk()
-        # Make the window semi-transparent and fullscreen
-        self.root.attributes('-alpha', 0.3)
-        self.root.attributes('-fullscreen', True)
-        self.root.attributes('-topmost', True) # Keep on top of everything
-        self.root.config(cursor="cross")
         
-        self.canvas = tk.Canvas(self.root, cursor="cross", bg="black")
+        # Hide from taskbar
+        self.root.overrideredirect(True)
+        
+        # 1. NO DIMMING: Pure stealth background (0.01 alpha)
+        self.root.attributes('-alpha', 0.01) 
+        self.root.attributes('-topmost', True) 
+        self.root.config(cursor="arrow")
+        
+        # Stretch across the whole screen
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        self.root.geometry(f"{screen_width}x{screen_height}+0+0")
+        
+        # Force the window to render to get the HWND
+        self.root.update_idletasks()
+        
+        # 🛑 HIDE FROM SCREEN SHARE 🛑
+        try:
+            hwnd = int(self.root.wm_frame(), 16)
+            ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, 0x00000011)
+        except Exception as e:
+            print(f"[Stealth] Failed to hide from screen share: {e}")
+
+        # 2. NO RED BORDER: highlightthickness set back to 0
+        self.canvas = tk.Canvas(
+            self.root, 
+            cursor="arrow", 
+            bg="black", 
+            highlightthickness=0         
+        )
         self.canvas.pack(fill="both", expand=True)
         
+        # Bind the mouse events
         self.canvas.bind("<ButtonPress-1>", self.on_press)
         self.canvas.bind("<B1-Motion>", self.on_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_release)
@@ -147,25 +206,79 @@ class SnippingTool:
     def on_press(self, event):
         self.start_x = self.canvas.canvasx(event.x)
         self.start_y = self.canvas.canvasy(event.y)
-        # Create the red bounding box
+        
+        # 3. THIN GREEN BAR: outline='#00ff00', width=1
         self.rect = self.canvas.create_rectangle(
-            self.start_x, self.start_y, 1, 1, outline='red', width=3, fill="black"
+            self.start_x, self.start_y, 1, 1, outline="#3cff00", width=5, fill=""
         )
 
     def on_drag(self, event):
         curX, curY = (event.x, event.y)
-        # Update the box size as you drag
+        # Update the box coordinates as you drag
         self.canvas.coords(self.rect, self.start_x, self.start_y, curX, curY)
 
     def on_release(self, event):
-        # Save the coordinates and destroy the overlay
+        # Save the coordinates
         self.bbox = (
             min(self.start_x, event.x), 
             min(self.start_y, event.y), 
             max(self.start_x, event.x), 
             max(self.start_y, event.y)
         )
+        # Destroy the overlay immediately
         self.root.destroy()
+
+
+# class SnippingTool:
+#     def __init__(self):
+#         self.root = tk.Tk()
+        
+#         # 1. Hide from taskbar
+#         self.root.overrideredirect(True)
+        
+#         # 2. Make it completely stealth
+#         self.root.attributes('-alpha', 0.01)
+#         self.root.attributes('-topmost', True) 
+#         self.root.config(cursor="arrow")
+        
+#         # 3. THE FIX: Manually stretch it across the entire screen instead of using -fullscreen
+#         screen_width = self.root.winfo_screenwidth()
+#         screen_height = self.root.winfo_screenheight()
+#         self.root.geometry(f"{screen_width}x{screen_height}+0+0")
+        
+#         # 4. Standard canvas setup
+#         self.canvas = tk.Canvas(self.root, cursor="arrow", bg="black", highlightthickness=0)
+#         self.canvas.pack(fill="both", expand=True)
+        
+#         self.canvas.bind("<ButtonPress-1>", self.on_press)
+#         self.canvas.bind("<B1-Motion>", self.on_drag)
+#         self.canvas.bind("<ButtonRelease-1>", self.on_release)
+        
+#         self.start_x = None
+#         self.start_y = None
+#         self.rect = None
+#         self.bbox = None
+
+#     def on_press(self, event):
+#         self.start_x = self.canvas.canvasx(event.x)
+#         self.start_y = self.canvas.canvasy(event.y)
+        
+#         self.rect = self.canvas.create_rectangle(
+#             self.start_x, self.start_y, 1, 1, outline='', width=0, fill=""
+#         )
+
+#     def on_drag(self, event):
+#         curX, curY = (event.x, event.y)
+#         self.canvas.coords(self.rect, self.start_x, self.start_y, curX, curY)
+
+#     def on_release(self, event):
+#         self.bbox = (
+#             min(self.start_x, event.x), 
+#             min(self.start_y, event.y), 
+#             max(self.start_x, event.x), 
+#             max(self.start_y, event.y)
+#         )
+#         self.root.destroy()
 
 def get_screen_snip():
     """Opens the snipping overlay and returns the cropped Image."""
@@ -198,45 +311,67 @@ np.fromstring = _safe_fromstring
 # ---------------------------------------------
 
 
-app = FastAPI()
 
-@app.on_event("startup")
-def warmup_ai_models():
-    def load_whisper():
-        global whisper_model
-        if WhisperModel is not None and whisper_model is None:
-            print("[WARMUP] Pre-loading Whisper 'base.en' model to CPU in background...")
-            try:
-                # IMPORTANT: Keep the cpu_threads=4 fix here too!
-                whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=4)
-                print("[WARMUP] Whisper model is ready for instant voice commands!")
-            except Exception as e:
-                print(f"[WARMUP FAIL] Could not load Whisper: {e}")
+# --- NEW LIFESPAN MANAGER ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global whisper_model
+    print("[WARMUP] Pre-loading Whisper 'base.en' model to CUDA...")
+    try:
+        if whisper_model is None and WhisperModel is not None:
+            whisper_model = WhisperModel("base.en", device="cuda", compute_type="int8_float16")
+    except Exception as e:
+        print(f"Failed to pre-load Whisper: {e}")
+    
+    yield # This tells FastAPI the app is ready to run!
 
-    # Fire and forget: Runs the heavy loading on a separate thread
-    threading.Thread(target=load_whisper, daemon=True).start()
+
+app = FastAPI(lifespan=lifespan)
+
+
+# Local dev origins for Electron+Vite renderer.
+ALLOWED_ORIGINS = {
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+}
+
+
+def cors_headers_for_request(request: Request) -> dict:
+    origin = request.headers.get("origin")
+    if origin and origin in ALLOWED_ORIGINS:
+        return {"Access-Control-Allow-Origin": origin, "Vary": "Origin"}
+    # Conservative fallback for non-browser/internal clients.
+    return {"Access-Control-Allow-Origin": "*"}
+
 
 # --- NEW: GLOBAL CRASH CATCHER ---
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    # Write the exact error to a text file on your Desktop
-    desktop_path = os.path.join(os.path.expanduser("~"), "Desktop", "vision_crash_log.txt")
-    with open(desktop_path, "w", encoding="utf-8") as f:
-        f.write(f"CRASH OCCURRED ON ROUTE: {request.url.path}\n\n")
-        f.write(traceback.format_exc())
-        
-    print(f"FATAL ERROR CAUGHT: {exc}") # Try to print it too
+    # Never let error logging crash the exception handler itself.
+    try:
+        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop", "vision_crash_log.txt")
+        with open(desktop_path, "w", encoding="utf-8") as f:
+            f.write(f"CRASH OCCURRED ON ROUTE: {request.url.path}\n\n")
+            f.write(traceback.format_exc())
+    except Exception as log_error:
+        print(f"Failed to write crash log: {log_error}")
+
+    print(f"FATAL ERROR CAUGHT: {exc}")  # Keep stdout logging for quick debugging
     return JSONResponse(
         status_code=500,
-        content={"message": "Internal Server Error", "detail": str(exc)}
+        content={"message": "Internal Server Error", "detail": str(exc)},
+        headers=cors_headers_for_request(request),
     )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=list(ALLOWED_ORIGINS),
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    
 )
 
 
@@ -248,6 +383,8 @@ class ConversationMessage(BaseModel):
 class UserCommand(BaseModel):
     text: str = ""
     messages: list[ConversationMessage] = Field(default_factory=list)
+    tech_stack: str = ""
+    model_name: str = "qwen2.5-coder:3b"
 
 
 class Message(BaseModel):
@@ -258,23 +395,20 @@ class Message(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[Message]
 
+class TranscribeRequest(BaseModel):
+    audio_path: str
 
-llm = ChatOllama(
-    model=OLLAMA_MODEL,
-    temperature=0.0,
-    base_url=OLLAMA_BASE_URL,
-    num_ctx=2048,    
-    num_predict=1500
-)
+class ExportMessage(BaseModel):
+    role: str  # e.g., "System Audio", "User Action", "AI Answer"
+    content: str
 
-vision_llm = ChatOllama(
-    model="moondream",
-    temperature=0.0,
-    base_url=OLLAMA_BASE_URL,
-)
+class ExportRequest(BaseModel):
+    session_id: str
+    messages: List[ExportMessage]    
 
-MOONDREAM_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlfaWQiOiI0NGU2Y2Q1NC02YmJkLTRmZTktYjYxZS1hNDIxYTc1ZjAzZTgiLCJvcmdfaWQiOiJKSmtFczdhQWZCMGw5Rmk3SXNyYkZnRGtnaERyWG40VyIsImlhdCI6MTc3NDIxMTM3MSwidmVyIjoxfQ.nz27rLzkMfT8p7RetApkUWkRpCVNWFRYRvZ6hHlVjWs"
-moondream_cloud = md.vl(api_key=MOONDREAM_API_KEY)
+
+def get_moondream_api_key() -> str:
+    return (os.getenv("MOONDREAM_API_KEY") or "").strip().strip('"').strip("'")
 
 whisper_model = None
 
@@ -304,13 +438,8 @@ def transcribe_audio_file(temp_audio_path: str) -> str:
     global whisper_model
     print("[DEBUG] Inside transcribe_audio_file")
 
-    if WhisperModel is None:
-        raise RuntimeError("faster-whisper is not installed.")
-
     if whisper_model is None:
-        print("[DEBUG] Loading Whisper 'base.en' model to CPU. This may take 15-30 seconds...")
-        whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=4)
-        print("[DEBUG] Whisper model successfully loaded to RAM!")
+        raise RuntimeError("Whisper model is not initialized. Check FastAPI lifespan startup.")
 
     print("[DEBUG] Running inference on audio file...")
 
@@ -336,10 +465,36 @@ def transcribe_audio_file(temp_audio_path: str) -> str:
 
     return " ".join(segment.text.strip() for segment in segments).strip()
 
+# --- Add this block ---
+@app.get("/health")
+async def health_check():
+    """Endpoint for the Electron frontend to verify the backend is running."""
+    return {"status": "ok", "message": "Backend is ready!"}
+# ----------------------
 
 @app.post("/agent/execute")
 async def execute_command(command: UserCommand):
-    formatted_messages = build_message_history(command)
+    current_model = command.model_name if command.model_name else "qwen2.5-coder:3b"
+    if current_model.startswith("lightning:"):
+        # lit_api_key = os.environ.get("LIGHTNING_API_KEY")
+        if not lit_api_key:
+            raise ValueError("LIGHTNING_API_KEY is missing from the .env file.")
+            
+        lit_model = current_model.replace("lightning:", "")
+        llm = ChatOpenAI(
+            model=lit_model,
+            api_key=lit_api_key,
+            base_url="https://lightning.ai/api/v1",
+            temperature=0.2,
+            streaming=True
+        )
+    else:
+        llm = ChatOllama(
+        model=current_model,
+        temperature=0.2,
+        base_url="http://localhost:11434"
+    )
+
     user_text_lower = command.text.lower()
     
     career_triggers = [
@@ -348,9 +503,21 @@ async def execute_command(command: UserCommand):
         "ragchatbot", "college project"
     ]
     
-    is_career_question = "[Quick Command: CAREER]" in command.text or any(kw in user_text_lower for kw in career_triggers)
+    # 1. Check if the user explicitly clicked the Career button
+    is_explicit_career = "[Quick Command: CAREER]" in command.text
+    
+    # 2. Check if a DIFFERENT lifeline button was clicked (Coding, Design, etc.)
+    is_other_command = "[Quick Command:" in command.text and not is_explicit_career
+    
+    # 3. Only use the keyword triggers if NO other command is currently active
+    is_career_question = is_explicit_career or (
+        not is_other_command and any(kw in user_text_lower for kw in career_triggers)
+    )
 
     context = ""
+    question = command.text
+
+    # --- CAREER ROUTE HANDLING ---
     if is_career_question:
         if "Question:\n\n" in command.text:
             question = command.text.split("Question:\n\n")[-1].strip()
@@ -387,54 +554,181 @@ async def execute_command(command: UserCommand):
             async def stream_err():
                 yield f"Missing career data file. Looked in: {CAREER_DATA_DIR}"
             return StreamingResponse(stream_err(), media_type="text/plain")
-        
-        formatted_messages = [
-            SystemMessage(content=CAREER_AGENT_PROMPT.format(context=context).strip()),
-            HumanMessage(content=question)
-        ]
 
-    if len(formatted_messages) == 1:
+    # --- MESSAGE ASSEMBLY & REMINDER INJECTION ---
+    formatted_messages = []
+    
+    if is_career_question:
+        system_prompt = CAREER_AGENT_PROMPT.format(context=context).strip()
+        reminder = "\n\n[CRITICAL REMINDER: Answer in 3 sentences max. Speak in the first-person ('I built...'). NO preambles, NO greetings, NO bullet points.]"
+        
+        formatted_messages.append(SystemMessage(content=system_prompt))
+        formatted_messages.append(HumanMessage(content=question))
+    else:
+        # Format the prompt dynamically using the payload from React
+        # Fallback to a generic string just in case the frontend sends an empty value
+        safe_stack = command.tech_stack if command.tech_stack else "Standard Web Development Stack"
+        system_prompt = FAST_CODING_PROMPT.format(tech_stack=safe_stack)
+        
+        reminder = "\n\n[CRITICAL REMINDER: Output ONLY the requested code. No fluff. If the request is a recipe, writing, or unrelated to software engineering, you MUST reply EXACTLY with 'Out of scope.' Do NOT output JSON for non-tech requests.]"
+        
+        formatted_messages.append(SystemMessage(content=system_prompt))
+        
+        # Add historical messages (excluding the last one)
+        for msg in command.messages[:-1]:
+            if msg.role == "user":
+                formatted_messages.append(HumanMessage(content=msg.content))
+            elif msg.role == "assistant":
+                formatted_messages.append(AIMessage(content=msg.content))
+                
+        # Inject reminder into the final user message
+        if command.messages:
+            last_user_text = command.messages[-1].content
+            formatted_messages.append(HumanMessage(content=last_user_text))
+        else:
+            formatted_messages.append(HumanMessage(content=command.text))
+
+    if not formatted_messages:
         async def stream_err(): yield "Please send a prompt."
         return StreamingResponse(stream_err(), media_type="text/plain")
 
-    # -Stream tokens directly to React ---
-    async def generate_response():
+    # --- STREAM TO REACT ---
+    def generate_response():
         try:
             for chunk in llm.stream(formatted_messages):
                 if chunk.content:
-                    yield chunk.content
+                    yield chunk.content.encode('utf-8')
         except Exception as error:
-            yield f"\n\nError generating response: {error}"
+            yield f"\n\nError generating response: {error}".encode("utf-8")
 
-    return StreamingResponse(generate_response(), media_type="text/plain")
+    return StreamingResponse(
+        generate_response(), 
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "X-Content-Type-Options": "nosniff"
+        }
+    )
 
-# @app.post("/agent/voice")
-# async def execute_voice(audio: UploadFile = File(...)):
-#     suffix = ".webm"
+@app.post("/agent/moondream-pipeline")
+async def run_moondream_pipeline(command: UserCommand):
+    try:
+        screenshot = ImageGrab.grab()
+    except Exception as e:
+        # Return a clear failure instead of an opaque crash so frontend can surface it.
+        raise HTTPException(status_code=500, detail=f"Failed to capture screen: {e}")
+    current_model = command.model_name if command.model_name else "qwen2.5-coder:3b"
+    if current_model.startswith("lightning:"):
+        # lit_api_key = os.environ.get("LIGHTNING_API_KEY")
+        if not lit_api_key:
+            raise ValueError("LIGHTNING_API_KEY is missing")
+            
+        lit_model = current_model.replace("lightning:", "")
+        llm = ChatOpenAI(
+            model=lit_model,
+            api_key=lit_api_key,
+            base_url="https://lightning.ai/api/v1",
+            temperature=0.2,
+            streaming=True
+        )
+    else:
+        llm = ChatOllama(
+        model=current_model,
+        temperature=0.1,
+        base_url=OLLAMA_BASE_URL
+    )
 
-#     if audio.filename and "." in audio.filename:
-#         suffix = "." + audio.filename.rsplit(".", 1)[-1]
+    prompt_text = """
+Task: You are an elite Technical Interview Vision Extractor. Analyze this screenshot and extract the core technical problem.
 
-#     temp_audio_path = None
+CRITICAL EXTRACTION RULES:
+1. IGNORE THE NOISE: Completely ignore all advertisements, pop-ups, navigation menus, browser tabs, and marketing text (e.g., "Flash Sale", "Pro Plan", "Subscribe").
+2. KEYWORD HUNT: Scan strictly for imperative action words like "Write", "Create", "Build", "Design", "Implement", or "Solve". Extract the sentence containing these words as the absolute core task.
+3. CODE EDITORS: If you see a code editor or IDE, extract the instructional comments (e.g., "// Write a function...") and any starter code. Ignore the UI surrounding the editor.
+4. SYSTEM DESIGN DIAGRAMS: If you see a flowchart, whiteboard, or architecture diagram, you MUST transcribe it so a downstream AI can build a Mermaid diagram. 
+   - List every visible node/box (e.g., "Client", "API Gateway", "Database").
+   - Describe the arrows and connections exactly (e.g., "Client has an arrow pointing to API Gateway").
 
-#     try:
-#         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-#             temp_audio_path = temp_file.name
-#             temp_file.write(await audio.read())
+Output Format: 
+Return ONLY the extracted text, code, or diagram description. Do NOT output conversational filler. Do NOT hallucinate tasks based on advertisements.
+""".strip()
+    
+    raw_extraction = ""
+    moondream_api_key = get_moondream_api_key()
+    if not moondream_api_key:
+        raise HTTPException(status_code=503, detail="MOONDREAM_API_KEY is missing in backend environment.")
 
-#         transcript = transcribe_audio_file(temp_audio_path)
+    try:
+        moondream_cloud = md.vl(api_key=moondream_api_key)
+        moondream_result = moondream_cloud.query(screenshot, prompt_text)
+        print(f"[MOONDREAM] cloud result type={type(moondream_result)}")
+        print(f"[MOONDREAM] cloud result={moondream_result}")
+        if isinstance(moondream_result, dict):
+            raw_extraction = (moondream_result.get("answer") or "").strip()
+        else:
+            raw_extraction = str(moondream_result).strip()
+    except Exception as cloud_error:
+        raise HTTPException(status_code=503, detail=f"Moondream cloud query failed: {cloud_error}")
 
-#         if not transcript:
-#             return {"status": "error", "response": "Could not transcribe audio."}
 
-#         return {"status": "success", "transcript": transcript}
+    vision_task = f"""
+You are an elite Technical Interview Assistant. 
+Review the following raw text extracted from an image by a vision model.
 
-#     except Exception as error:
-#         return {"status": "error", "response": f"{error}"}
+CRITICAL INSTRUCTIONS:
+- If the text describes an Architecture/System Design diagram: Output a valid Mermaid.js diagram (`mermaid` code block) representing the text, followed by a brief spoken-style explanation.
+- If the text describes a Coding task or contains starter code: Fix any OCR typos and output the corrected code/task, followed by a brief spoken-style explanation of the core concept.
+- Output ONLY the formatted result and explanation. Do not include AI filler like "Here is the corrected text".
 
-#     finally:
-#         if temp_audio_path and os.path.exists(temp_audio_path):
-#             os.remove(temp_audio_path)
+RAW EXTRACTION:
+{raw_extraction}
+""".strip()
+    
+    validator_prompt = VISION_CREATE_PROMPT.format(command=vision_task)
+
+    # Create a generator that yields chunks as the LLM types them
+    async def stream_validated_response():
+        try:
+            for chunk in llm.stream([SystemMessage(content=validator_prompt)]):
+                if chunk.content:
+                    yield chunk.content.encode("utf-8")
+        except Exception as e:
+            yield f"\n\nError in validation stream: {e}".encode("utf-8")
+
+    return StreamingResponse(
+        stream_validated_response(),
+        media_type="application/octet-stream",
+        headers={
+            "Transfer-Encoding": "chunked",
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "X-Content-Type-Options": "nosniff"
+        }
+    )
+
+
+@app.post("/transcribe")
+async def transcribe(request: TranscribeRequest):
+    global whisper_model
+
+    audio_path = request.audio_path
+
+    if whisper_model is None:
+        raise HTTPException(status_code=500, detail="Whisper model is not initialized.")
+
+    segments, _ = whisper_model.transcribe(
+        audio_path,
+        language="en",
+        beam_size=5,
+        vad_filter=True,
+    )
+
+    texts = [seg.text.strip() for seg in segments if seg.text and seg.text.strip()]
+    transcript = " ".join(texts).strip()
+    return {"text": transcript}
 
 @app.post("/agent/voice")
 async def execute_voice(audio: UploadFile = File(...)):
@@ -488,107 +782,177 @@ async def listen_to_system_audio():
     temp_audio_path = None
 
     try:
-        print("Available Speakers:")
         speakers = sc.all_speakers()
+        if not speakers:
+            return {"status": "error", "transcript": "No output speakers available for loopback capture."}
+
+        print("Available Speakers:")
         for sp in speakers:
             print(f"{sp.name} | id={sp.id}")
 
-        # ðŸ”¥ Smart device selection (Headphones > FxSound > Default)
-        selected_speaker = None
+        # Build a deterministic preference list, then validate each candidate by opening loopback.
+        # This avoids locking onto a single brand/device and handles machines with multiple virtual outputs.
+        keyword_priority = [
+            ("realtek", 0),
+            ("headphones", 1),
+            ("speakers", 2),
+            ("fxsound", 3),
+            ("virtual", 4),
+        ]
 
-        for sp in speakers:
-            name = sp.name.lower()
-            if "headphones" in name and "hands-free" not in name:
+        ranked = []
+        for idx, sp in enumerate(speakers):
+            name = (sp.name or "").lower()
+            if "hands-free" in name:
+                continue
+            rank = 100
+            for kw, kw_rank in keyword_priority:
+                if kw in name:
+                    rank = kw_rank
+                    break
+            ranked.append((rank, idx, sp))
+
+        default_speaker = sc.default_speaker()
+        if default_speaker is not None:
+            ranked.insert(0, (-1, -1, default_speaker))
+
+        loopback_mic = None
+        selected_speaker = None
+        seen_ids = set()
+
+        for _, _, sp in sorted(ranked, key=lambda x: (x[0], x[1])):
+            if sp.id in seen_ids:
+                continue
+            seen_ids.add(sp.id)
+            try:
+                candidate = sc.get_microphone(sp.id, include_loopback=True)
+                # Validate the device can actually be opened at the target format.
+                with candidate.recorder(samplerate=48000, blocksize=2048):
+                    pass
+                loopback_mic = candidate
                 selected_speaker = sp
                 break
+            except Exception as loop_err:
+                print(f"[LOOPBACK SKIP] {sp.name}: {loop_err}")
 
-        if not selected_speaker:
-            for sp in speakers:
-                if "fxsound" in sp.name.lower():
-                    selected_speaker = sp
-                    break
-
-        if not selected_speaker:
-            selected_speaker = sc.default_speaker()
+        if loopback_mic is None or selected_speaker is None:
+            return {"status": "error", "transcript": "Could not initialize a loopback recording device."}
 
         print(f"Using speaker: {selected_speaker.name}")
 
-        loopback_mic = sc.get_microphone(selected_speaker.id, include_loopback=True)
-
         record_seconds = 10
         sample_rate = 48000
+        block_size = 2048
+        num_frames = int(sample_rate * record_seconds)
 
         print(f"Recording {record_seconds}s of system audio...")
+        with loopback_mic.recorder(samplerate=sample_rate, blocksize=block_size) as mic:
+            audio_data = mic.record(numframes=num_frames)
 
-        with loopback_mic.recorder(samplerate=sample_rate, blocksize=4096) as mic:
-            audio_data = mic.record(numframes=int(sample_rate * record_seconds))
+        audio_data = np.asarray(audio_data, dtype=np.float32)
+        if audio_data.size == 0:
+            return {"status": "error", "transcript": "No audio frames captured from loopback device."}
 
-        # ðŸ”Š Validate signal
-        max_amp = float(np.max(np.abs(audio_data)))
-        print(f" Max amplitude: {max_amp}")
+        # Normalize to 2D [frames, channels] if the backend returns 1D for mono.
+        if audio_data.ndim == 1:
+            audio_data = audio_data.reshape(-1, 1)
+        elif audio_data.ndim > 2:
+            audio_data = np.squeeze(audio_data)
+            if audio_data.ndim == 1:
+                audio_data = audio_data.reshape(-1, 1)
+            elif audio_data.ndim != 2:
+                return {"status": "error", "transcript": f"Unexpected audio shape: {audio_data.shape}"}
 
-        if max_amp < 1e-5:
-            return {
-                "status": "error",
-                "transcript": "No system audio detected."
-            }
+        # Drop NaN/Inf early; these poison RMS and Whisper input.
+        if not np.isfinite(audio_data).all():
+            audio_data = np.nan_to_num(audio_data, nan=0.0, posinf=0.0, neginf=0.0)
 
-        # ðŸ”„ Convert to mono
-        if len(audio_data.shape) > 1:
-            audio_data = audio_data.mean(axis=1)
+        # Convert to mono before amplitude checks so one dead channel doesn't skew metrics.
+        mono = audio_data.mean(axis=1)
+        mono = mono.astype(np.float32, copy=False)
 
-        # ðŸ’¾ Save temp audio
+        peak = float(np.max(np.abs(mono))) if mono.size else 0.0
+        rms = float(np.sqrt(np.mean(np.square(mono)))) if mono.size else 0.0
+        print(f"[AUDIO] raw_peak={peak:.8f} raw_rms={rms:.8f} frames={mono.shape[0]}")
+
+        # Very low energy likely means actual silence or wrong device.
+        if peak < 1e-6 and rms < 1e-7:
+            return {"status": "error", "transcript": "No system audio detected."}
+
+        # Remove DC offset (common with some virtual devices) before gain staging.
+        mono = mono - float(np.mean(mono))
+        peak = float(np.max(np.abs(mono))) if mono.size else 0.0
+        rms = float(np.sqrt(np.mean(np.square(mono)))) if mono.size else 0.0
+
+        # Robust gain staging:
+        # - Lift quiet captures up to a usable RMS.
+        # - Clamp loud captures to avoid clipping and Whisper degradation.
+        target_rms = 0.08
+        target_peak = 0.95
+        min_rms_for_gain = 1e-5
+        max_gain = 50.0
+
+        gain = 1.0
+        if rms >= min_rms_for_gain:
+            gain = target_rms / rms
+        elif peak > 0.0:
+            # If RMS is tiny but non-zero, use peak-based fallback.
+            gain = target_peak / peak
+
+        gain = float(np.clip(gain, 0.05, max_gain))
+        mono = mono * gain
+
+        post_peak = float(np.max(np.abs(mono))) if mono.size else 0.0
+        if post_peak > target_peak and post_peak > 0:
+            mono = mono * (target_peak / post_peak)
+
+        mono = np.clip(mono, -1.0, 1.0).astype(np.float32, copy=False)
+
+        post_rms = float(np.sqrt(np.mean(np.square(mono)))) if mono.size else 0.0
+        post_peak = float(np.max(np.abs(mono))) if mono.size else 0.0
+        print(
+            f"[AUDIO] gain={gain:.4f} post_peak={post_peak:.8f} "
+            f"post_rms={post_rms:.8f}"
+        )
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
             temp_audio_path = temp_file.name
-            sf.write(temp_audio_path, audio_data, sample_rate)
+            # Explicit subtype improves compatibility across Whisper/ffmpeg decoders.
+            sf.write(temp_audio_path, mono, sample_rate, subtype="PCM_16")
 
-        print(" Transcribing audio...")
+        print("Transcribing audio...")
 
-        # ðŸ”¥ Improved transcription
         global whisper_model
         if whisper_model is None:
-            if WhisperModel is None:
-                raise RuntimeError("faster-whisper not installed")
-            whisper_model = WhisperModel("medium.en", device="cpu", compute_type="int8")
+            raise RuntimeError("Whisper model is not initialized. Check FastAPI lifespan startup.")
+
+        optimized_jargon="Python, JavaScript, TypeScript, React, Next.js, FastAPI, Node.js, AWS, Docker, AI, LangChain, API",
+    
 
         segments, _ = whisper_model.transcribe(
             temp_audio_path,
             language="en",
+            task="transcribe",
             beam_size=5,
+            best_of=5,
             vad_filter=False,
-            vad_parameters=dict(min_silence_duration_ms=500),
-            initial_prompt="This is a recording of system audio, possibly containing human speech.",
+            vad_parameters=dict(min_silence_duration_ms=300, speech_pad_ms=120),
+            condition_on_previous_text=False,
+            initial_prompt=optimized_jargon,
         )
 
-        print(" Raw segments:")
-        texts = []
-        for seg in segments:
-            print(seg.text)
-            if seg.text.strip():
-                texts.append(seg.text.strip())
-
+        texts = [seg.text.strip() for seg in segments if seg.text and seg.text.strip()]
         transcript = " ".join(texts).strip()
 
-        # âœ… DO NOT treat as error anymore
         if not transcript:
-            return {
-                "status": "success",
-                "transcript": "[Audio detected but no clear speech recognized]"
-            }
+            return {"status": "success", "transcript": "[Audio detected but no clear speech recognized]"}
 
         print(f"Transcript: {transcript}")
-
-        return {
-            "status": "success",
-            "transcript": transcript
-        }
+        return {"status": "success", "transcript": transcript}
 
     except Exception as e:
         print(f"System Audio Error: {e}")
-        return {
-            "status": "error",
-            "transcript": str(e)
-        }
+        return {"status": "error", "transcript": str(e)}
 
     finally:
         if temp_audio_path and os.path.exists(temp_audio_path):
@@ -626,26 +990,34 @@ if not os.path.exists(TESSERACT_PATH):
 
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
 
+
+import cv2
 # -----------------------------
 # OCR Text Extraction
 # -----------------------------
 def extract_text_from_image(image: Image.Image) -> str:
-    # Convert to grayscale
-    image = image.convert("L")
+    # 1. Convert PIL image to OpenCV format (RGB to BGR)
+    img_np = np.array(image.convert('RGB'))
+    img_np = img_np[:, :, ::-1].copy()
 
-    # ðŸ”¥ Increase contrast (huge improvement)
-    import cv2
-    import numpy as np
+    # 2. Convert to Grayscale
+    gray = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY)
 
-    img_np = np.array(image)
-    img_np = cv2.threshold(img_np, 150, 255, cv2.THRESH_BINARY)[1]
+    # 3. Preserve Aspect Ratio Resize (Scale up by 2.5x for optimal Tesseract DPI)
+    gray = cv2.resize(gray, None, fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC)
 
-    # Resize for clarity
-    img_np = cv2.resize(img_np, (1200, 1200))
+    # 4. Handle Dark Mode (Tesseract prefers black text on a white background)
+    if np.mean(gray) < 127:
+        gray = cv2.bitwise_not(gray)
 
-    text = pytesseract.image_to_string(img_np)
+    # 5. Otsu's Thresholding to perfectly crisp up the text
+    _, processed_img = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
 
-    return text
+    # 6. Run Tesseract with Page Segmentation Mode 6 (Assume a single uniform block of text)
+    custom_config = r'--oem 3 --psm 6'
+    text = pytesseract.image_to_string(processed_img, config=custom_config)
+
+    return text.strip()
 
 # -----------------------------
 # Command Extraction
@@ -758,6 +1130,7 @@ async def execute_vision_command(request: ChatRequest):
             if "[Vision: FIX]" in last_msg: mode = "fix"
             elif "[Vision: EXPLAIN]" in last_msg: mode = "explain"
             elif "[Vision: HELP]" in last_msg: mode = "help"
+            elif "[Vision: SMART]" in last_msg: mode = "smart"
             
             if "] " in last_msg:
                 instruction = last_msg.split("] ", 1)[-1]
@@ -765,8 +1138,16 @@ async def execute_vision_command(request: ChatRequest):
                 instruction = last_msg
 
         # 2. STEALTH MODE: Instantly grab the primary monitor invisibly
-        print(f"Stealth capturing full screen for {mode.upper()} mode...")
-        screenshot = ImageGrab.grab()
+        # print(f"Stealth capturing full screen for {mode.upper()} mode...")
+        # screenshot = ImageGrab.grab()
+        # 2. CAPTURE MODE: Use Snipping Tool for Fix/Explain, Full Screen for Create
+        # if mode in ["fix"]:
+        if mode in ["fix", "explain", "create", "smart"]:
+            print(f"Triggering Snipping Tool for {mode.upper()} mode...")
+            screenshot = get_screen_snip()
+        else:
+            print(f"Stealth capturing full screen for {mode.upper()} mode...")
+            screenshot = ImageGrab.grab()
 
         # 3. Formulate the "Sniper" Prompt
         if mode == "create":
@@ -788,13 +1169,24 @@ async def execute_vision_command(request: ChatRequest):
                 "Wrap the extracted code strictly in standard Markdown backticks (```). "
                 "Do not include any greetings or conversational filler."
             )
+        elif mode == "smart":
+            prompt_text = (
+                "Task: You are an elite Technical Interview Vision Extractor. Extract all text, code, or architecture details from this image. "
+                "CRITICAL RULES: "
+                "1. IGNORE NOISE: Ignore all ads, pop-ups, and browser UI. "
+                "2. DIAGRAMS: If you see a flowchart or architecture diagram, list the visible nodes and describe the connections exactly (e.g., 'Client box points to Load Balancer box'). "
+                "3. QUESTIONS & CODE: If it's a coding or design question, transcribe the text perfectly. "
+                "Do not attempt to solve, answer, or generate markdown diagrams here. Just transcribe the raw content accurately."
+            )
 
         # 4. Query the Moondream Cloud API
-        print(f"Sending Stealth Image to Moondream Cloud API for {mode.upper()}...")
-        result = moondream_cloud.query(screenshot, prompt_text)
-        
-        extracted_text = result.get("answer", "").strip()
-        print(f"RAW MOONDREAM OUTPUT:\n{extracted_text}")
+        # print(f"Sending Stealth Image to Moondream Cloud API for {mode.upper()}...")
+        # result = moondream_cloud.query(screenshot, prompt_text)
+        # extracted_text = result.get("answer", "").strip()
+        # print(f"RAW MOONDREAM OUTPUT:\n{extracted_text}")
+        print("Running highly optimized LOCAL OCR for SMART mode...")
+        extracted_text = extract_text_from_image(screenshot)
+        print(f"RAW LOCAL OCR OUTPUT:\n{extracted_text}")
 
         # 5. Format the final command for the UI
         # We process the user's typed input box text if they provided any
@@ -828,7 +1220,6 @@ async def execute_vision_command(request: ChatRequest):
         return {"status": "error", "response": str(e)}
 
 
-clean_code = ""   
 @app.post("/agent/confirm")
 async def confirm_and_execute(data: dict):
     command = data.get("command", "")
@@ -839,15 +1230,71 @@ async def confirm_and_execute(data: dict):
             yield "No command provided"
         return StreamingResponse(stream_err(), media_type="text/plain")
 
+    # --- MANUAL OVERRIDE CHECK ---
+    # If the user explicitly typed /fix or /exp in the UI edit box, bypass the smart router.
+    import re
+    command_lower = command.lower()
+    
+    if "/fix" in command_lower:
+        mode = "fix"
+        # Strip the command out so it doesn't pollute the LLM prompt
+        command = re.sub(r'(?i)/fix', '', command).strip()
+        print("[OVERRIDE] User manually forced FIX mode.")
+        
+    elif "/exp" in command_lower or "/explain" in command_lower:
+        mode = "explain"
+        command = re.sub(r'(?i)/explain', '', command)
+        command = re.sub(r'(?i)/exp', '', command).strip()
+        print("[OVERRIDE] User manually forced EXPLAIN mode.")
+
+    elif "/create" in command_lower:
+        mode = "create"
+        command = re.sub(r'(?i)/create', '', command).strip()
+        print("[OVERRIDE] User manually forced CREATE mode.")
+
+    # --- AGENTIC ROUTER: Step 1 (Classification) ---
+    # This will now ONLY run if the user didn't type a manual override command!
+    if mode == "smart":
+        print("[SMART] Running pre-classification...")
+        classify_prompt = VISION_CLASSIFY_PROMPT.format(command=command)
+        try:
+            class_res = requests.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "prompt": classify_prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.0, 
+                        "num_predict": 10 
+                    }
+                }
+            )
+            detected_mode = class_res.json().get("response", "").strip().lower()
+            
+            if "create" in detected_mode: mode = "create"
+            elif "fix" in detected_mode: mode = "fix"
+            elif "mcq" in detected_mode: mode = "mcq"
+            else: mode = "explain" 
+            
+            print(f"[SMART] Classified as: {mode.upper()}")
+            
+        except Exception as e:
+            print(f"[SMART] Classification failed: {e}. Falling back to explain.")
+            mode = "explain"
+
+    # --- AGENTIC ROUTER: Step 2 (Execution Mapping) ---
     mode_router = {
         "explain": (VISION_EXPLAIN_PROMPT, 0.3),
         "fix": (VISION_FIX_PROMPT, 0.1),
         "create": (VISION_CREATE_PROMPT, 0.1),
+        "mcq": (VISION_MCQ_PROMPT, 0.1),
     }
-    prompt_template, temperature = mode_router.get(mode, mode_router["create"])
+    
+    prompt_template, temperature = mode_router.get(mode, mode_router["explain"])
     prompt = prompt_template.format(command=command)
 
-    async def generate_response():
+    def generate_response():
         try:
             with requests.post(
                 f"{OLLAMA_BASE_URL}/api/generate",
@@ -875,7 +1322,164 @@ async def confirm_and_execute(data: dict):
         except Exception as e:
             yield f"\n\nError generating response: {e}"
 
-    return StreamingResponse(generate_response(), media_type="text/plain")
+    return StreamingResponse(
+        generate_response(), 
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "X-Content-Type-Options": "nosniff"
+        }
+    )
+
+@app.websocket("/ws/live-transcribe")
+async def live_transcribe(websocket: WebSocket):
+    await websocket.accept()
+    global whisper_model
+    
+    if whisper_model is None:
+        await websocket.close(code=1011)
+        return
+
+    last_text = ""
+
+    def squash_stutters(text: str) -> str:
+        if not text:
+            return ""
+        text = text.strip()
+        
+        # 1. Check exact halves (ignoring punctuation and spaces)
+        # Fixes: "Hello there. Hello there" (missing period)
+        mid = len(text) // 2
+        half1 = text[:mid].strip()
+        half2 = text[mid:].strip()
+        
+        # Strip all non-alphanumeric chars for a bulletproof comparison
+        clean1 = re.sub(r'[^\w\s]', '', half1).lower()
+        clean2 = re.sub(r'[^\w\s]', '', half2).lower()
+        
+        if clean1 == clean2:
+            return half1 # Return the first half (which usually has the correct punctuation)
+
+        # 2. Advanced Sentence Deduplication
+        phrases = [p.strip() for p in re.split(r'(?<=[.!?])\s+', text) if p.strip()]
+        deduped = []
+        for phrase in phrases:
+            clean_phrase = re.sub(r'[^\w\s]', '', phrase).lower()
+            if deduped:
+                clean_last = re.sub(r'[^\w\s]', '', deduped[-1]).lower()
+                # Skip if it's the exact same phrase
+                if clean_phrase == clean_last:
+                    continue
+                # Skip if it's a slightly shorter overlapping phrase
+                if clean_phrase in clean_last or clean_last in clean_phrase:
+                    if len(phrase) > len(deduped[-1]):
+                        deduped[-1] = phrase
+                    continue
+            deduped.append(phrase)
+            
+        return " ".join(deduped)
+
+    try:
+        while True:
+            wav_bytes = await websocket.receive_bytes()
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+                temp_file.write(wav_bytes)
+                temp_path = temp_file.name
+                
+            try:
+                segments, _ = whisper_model.transcribe(
+                    temp_path,
+                    language="en",
+                    beam_size=5,
+                    vad_filter=True,
+                    vad_parameters=dict(min_silence_duration_ms=300, speech_pad_ms=50),
+                    condition_on_previous_text=False,
+                    temperature=0.0,
+                    compression_ratio_threshold=1.5
+                )
+                
+                texts = []
+                for seg in segments:
+                    # Throw away pure static/noise
+                    if getattr(seg, 'no_speech_prob', 0.0) < 0.6:
+                        texts.append(seg.text.strip())
+                        
+                raw_text = " ".join(texts).strip()
+                
+                # --- RUN THE INDESTRUCTIBLE FILTER ---
+                clean_text = squash_stutters(raw_text)
+
+                # Only send if clean, not duplicate of the LAST chunk, and contains real words
+                if clean_text and clean_text != last_text and len(clean_text) > 2:
+                    
+                    # Prevent sending a chunk that is just a slight overlap of the previous message
+                    if last_text:
+                        clean_last = re.sub(r'[^\w\s]', '', last_text).lower()
+                        clean_current = re.sub(r'[^\w\s]', '', clean_text).lower()
+                        if clean_current in clean_last or clean_last in clean_current:
+                            if len(clean_text) > len(last_text):
+                                last_text = clean_text
+                                await websocket.send_json({"text": clean_text})
+                            continue
+
+                    last_text = clean_text 
+                    await websocket.send_json({"text": clean_text})
+                    
+            except Exception as e:
+                print(f"Live WS Transcribe Error: {e}")
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                    
+    except WebSocketDisconnect:
+        print("Live transcription WebSocket disconnected.")
+
+@app.post("/agent/export-markdown")
+async def export_markdown(request: ExportRequest):
+    # Ensure the archive directory exists
+    archive_dir = "meeting_archives"
+    os.makedirs(archive_dir, exist_ok=True)
+    
+    # Generate a timestamped filename
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"{archive_dir}/meeting_{timestamp}_{request.session_id}.md"
+    
+    # Write the Markdown file
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(f"# Meeting Archive: {request.session_id}\n")
+        f.write(f"**Date:** {datetime.now().strftime('%B %d, %Y at %I:%M %p')}\n\n")
+        f.write("---\n\n")
+        
+        for msg in request.messages:
+            f.write(f"### {msg.role}\n")
+            f.write(f"{msg.content}\n\n")
+            
+    return {"status": "success", "file": filename}   
+
+@app.post("/search-career")
+async def search_career(query: RagQuery):
+    # Use _with_score to see HOW relevant the result actually is.
+    # Note: Lower score usually means closer/better match (L2 distance), 
+    # but check your specific embedding model's metric.
+    docs_and_scores = career_db.similarity_search_with_score(query.transcript, k=1)
+    
+    if not docs_and_scores:
+        return {"context": "[NO CAREER DATA FOUND]"}
+        
+    doc, score = docs_and_scores[0]
+    
+    # Define a threshold (you will need to test what number works for your embeddings)
+    # If the score is worse than the threshold, flag it for the LLM.
+    THRESHOLD = 0.84 
+    
+    if score > THRESHOLD:
+        warning = "\n[SYSTEM WARNING: This project is only loosely related. Use the 'Pivot Rule' to bridge the gap.]"
+        return {"context": doc.page_content + warning}
+        
+    return {"context": doc.page_content} 
 
 # -----------------------------
 # Server Startup (Crucial for .exe)

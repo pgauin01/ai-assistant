@@ -10,3 +10,4 @@ assistant-backend/venv/
 **/build/
 **/resources/
 resources/*.exe
+.env

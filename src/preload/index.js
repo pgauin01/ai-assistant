@@ -12,6 +12,40 @@ const api = {
     const listener = () => callback()
     ipcRenderer.on('toggle-mic', listener)
     return () => ipcRenderer.removeListener('toggle-mic', listener)
+  },
+  wiretapSystem: () => ipcRenderer.invoke('wiretap-system'),
+  onToggleLiveTranscription: (callback) => {
+    const listener = () => callback()
+    ipcRenderer.on('toggle-live-transcription', listener)
+    return () => ipcRenderer.removeListener('toggle-live-transcription', listener)
+  },
+  onTriggerSmartVision: (callback) => {
+    const listener = () => callback()
+    ipcRenderer.on('trigger-smart-vision', listener)
+    return () => ipcRenderer.removeListener('trigger-smart-vision', listener)
+  },
+  onMoondreamTrigger: (callback) => {
+    const listener = () => callback()
+    ipcRenderer.on('trigger-moondream', listener)
+    return () => ipcRenderer.removeListener('trigger-moondream', listener)
+  },
+  startLiveSystemCapture: () => ipcRenderer.send('start-live-system-capture'),
+  stopLiveSystemCapture: () => ipcRenderer.send('stop-live-system-capture'),
+  saveAndExit: (markdownContent) => ipcRenderer.send('save-and-exit', markdownContent),
+  onLiveSystemAudioChunk: (callback) => {
+    const listener = (event, chunk) => callback(chunk)
+    ipcRenderer.on('live-system-audio-chunk', listener)
+    return () => ipcRenderer.removeListener('live-system-audio-chunk', listener)
+  },
+  onScrollAction: (callback) => {
+    const listener = (event, direction) => callback(direction)
+    ipcRenderer.on('scroll-action', listener)
+    return () => ipcRenderer.removeListener('scroll-action', listener)
+  },
+  onTriggerAction: (callback) => {
+    const listener = (event, actionType) => callback(actionType)
+    ipcRenderer.on('trigger-action', listener)
+    return () => ipcRenderer.removeListener('trigger-action', listener)
   }
 }
 
