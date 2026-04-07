@@ -535,11 +535,11 @@ async def execute_command(command: UserCommand):
                 context = read_career_markdown("RAG_Chatbot.md")
 
             if context:
-                print("MACRO TRIGGERED: Bypassing LLM and returning raw document directly.")
+                print("MACRO TRIGGERED: Loaded specific file. Passing to LLM for spoken summary.")
                 # Return macro as a quick stream chunk
-                async def stream_macro():
-                    yield context
-                return StreamingResponse(stream_macro(), media_type="text/plain")
+                # async def stream_macro():
+                #     yield context
+                # return StreamingResponse(stream_macro(), media_type="text/plain")
                 
             else:
                 if not career_retriever:
@@ -560,10 +560,15 @@ async def execute_command(command: UserCommand):
     
     if is_career_question:
         system_prompt = CAREER_AGENT_PROMPT.format(context=context).strip()
-        reminder = "\n\n[CRITICAL REMINDER: Answer in 3 sentences max. Speak in the first-person ('I built...'). NO preambles, NO greetings, NO bullet points.]"
         
+        # --- THE FIX: Updated reminder for the perfect Elevator Pitch ---
+        # reminder = "\n\n[CRITICAL REMINDER: Generate a 3-sentence 'Elevator Pitch' summary of this project. Speak in the first-person ('I built...'). Focus on the problem, the tech stack, and the result. NO preambles, NO greetings, NO markdown tables. Be conversational.]"
+        # --- THE FIX: Expanded reminder to force Tech Stack and Challenges ---
+        reminder = "\n\n[CRITICAL REMINDER: Generate a conversational, 6-sentence spoken summary of this project. Speak in the first-person ('I built...'). You MUST explicitly mention the core tools/tech stack used, the primary technical challenge overcome (like hallucinations or data scraping), and the final result. NO preambles, NO greetings, NO bullet points, NO markdown formatting. Write it exactly as a human would speak it out loud.]"
         formatted_messages.append(SystemMessage(content=system_prompt))
-        formatted_messages.append(HumanMessage(content=question))
+        
+        # --- THE FIX: Actually append the reminder to the question! ---
+        formatted_messages.append(HumanMessage(content=question + reminder))
     else:
         # Format the prompt dynamically using the payload from React
         # Fallback to a generic string just in case the frontend sends an empty value
