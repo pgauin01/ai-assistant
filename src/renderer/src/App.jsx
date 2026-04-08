@@ -624,6 +624,7 @@ function App() {
             ${ragData.context}
             [LIVE INTERVIEW TRANSCRIPT]
             ${rawText}
+            Now, based STRICTLY on the [RECENT CONVERSATION HISTORY] above if available, generate the spoken response:
 `
         } catch (error) {
           console.error('FAISS DB unreachable, falling back to default context.', error)
@@ -1745,6 +1746,10 @@ function App() {
               <option value="lightning:lightning-ai/gpt-oss-120b">GPT OSS (120B)</option>
               <option value="lightning:lightning-ai/llama-3.3-70b">Llama 3.3 (70B)</option>
               <option value="lightning:lightning-ai/DeepSeek-V3.1">DeepSeek V3.1</option>
+              <option value="lightning:lightning-ai/gemma-4-31B-it">Gemma 4</option>
+              <option value="lightning:openai/gpt-3.5-turbo">GPT 3.5 Turbo</option>
+              <option value="lightning:google/gemini-3-flash-preview">Gemini 3 Flash</option>
+
               {/* <option value="lightning:google/gemini-3-pro-preview">Gemini 3 Pro-preview</option> */}
             </optgroup>
             <optgroup label="☁️Ollama Cloud APIs">
