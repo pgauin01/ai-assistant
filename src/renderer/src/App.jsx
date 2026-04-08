@@ -1747,6 +1747,11 @@ function App() {
               <option value="lightning:lightning-ai/gpt-oss-120b">GPT OSS (120B)</option>
               <option value="lightning:lightning-ai/llama-3.3-70b">Llama 3.3 (70B)</option>
               <option value="lightning:lightning-ai/DeepSeek-V3.1">DeepSeek V3.1</option>
+              <option value="lightning:anthropic/claude-sonnet-4-20250514">Claude Sonnet 4</option>
+              <option value="lightning:anthropic/claude-sonnet-4-5-20250929">
+                Claude Sonnet 4.5
+              </option>
+              <option value="lightning:anthropic/claude-sonnet-4-6">Claude Sonnet 4.6</option>
               <option value="lightning:lightning-ai/gemma-4-31B-it">Gemma 4</option>
               <option value="lightning:openai/gpt-3.5-turbo">GPT 3.5 Turbo</option>
               <option value="lightning:google/gemini-3-flash-preview">Gemini 3 Flash</option>
