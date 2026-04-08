@@ -626,6 +626,7 @@ function App() {
             ${rawText}
             Now, based STRICTLY on the [RECENT CONVERSATION HISTORY] above if available, generate the spoken response:
 `
+          console.log('Context Block for Behavioral Action:', contextBlock)
         } catch (error) {
           console.error('FAISS DB unreachable, falling back to default context.', error)
         }
