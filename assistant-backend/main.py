@@ -646,19 +646,37 @@ async def run_moondream_pipeline(command: UserCommand):
     )
 
     prompt_text = """
-Task: You are an elite Technical Interview Vision Extractor. Analyze this screenshot and extract the core technical problem.
+Task: You are an elite Technical Interview Vision Extractor. Analyze this screenshot and extract the core technical problem, instructions, and code.
 
 CRITICAL EXTRACTION RULES:
-1. IGNORE THE NOISE: Completely ignore all advertisements, pop-ups, navigation menus, browser tabs, and marketing text (e.g., "Flash Sale", "Pro Plan", "Subscribe").
-2. KEYWORD HUNT: Scan strictly for imperative action words like "Write", "Create", "Build", "Design", "Implement", or "Solve". Extract the sentence containing these words as the absolute core task.
-3. CODE EDITORS: If you see a code editor or IDE, extract the instructional comments (e.g., "// Write a function...") and any starter code. Ignore the UI surrounding the editor.
-4. SYSTEM DESIGN DIAGRAMS: If you see a flowchart, whiteboard, or architecture diagram, you MUST transcribe it so a downstream AI can build a Mermaid diagram. 
-   - List every visible node/box (e.g., "Client", "API Gateway", "Database").
-   - Describe the arrows and connections exactly (e.g., "Client has an arrow pointing to API Gateway").
+1. IGNORE THE NOISE: Completely ignore all advertisements, pop-ups, navigation menus, browser tabs, video call UI, and marketing text.
 
-Output Format: 
-Return ONLY the extracted text, code, or diagram description. Do NOT output conversational filler. Do NOT hallucinate tasks based on advertisements.
-""".strip()
+2. FULL PROBLEM CAPTURE: Scan for imperative action words like "Write", "Create", "Build", "Design", "Implement", "Fix", or "Debug". Once found, extract the ENTIRE problem statement. You MUST include:
+   - The main task description.
+   - All Examples (Input/Output).
+   - All Constraints or technical requirements.
+
+3. ZERO-LOSS CODE EXTRACTION (CRITICAL): If you see a code editor, IDE, or code block:
+   - You MUST extract EVERY LINE of code visible.
+   - Capture all instructional comments (e.g., "// Write your code here").
+   - Capture all starter code AND any user-written code currently in the editor.
+   - PRESERVE EXACT INDENTATION, brackets, and syntax. Do not format or "fix" the code yourself; transcribe exactly what is on screen.
+
+4. SYSTEM DESIGN TRANSLATION: If you see a flowchart, whiteboard, or architecture diagram, transcribe it so a downstream AI can build a Mermaid diagram. 
+   - List every visible node/box (e.g., "Client", "API Gateway").
+   - Describe the arrows and connections exactly (e.g., "Client -> points to -> API Gateway").
+
+OUTPUT FORMAT:
+Do NOT output conversational filler like "Here is the extracted text." 
+You MUST strictly format your response using the following Markdown headers. If a section is not present in the image, output "None".
+
+### PROBLEM STATEMENT
+[Insert the full text of the problem, instructions, examples, and constraints here]
+
+### CODE
+```[language]
+[Insert the exact extracted code here, preserving all indentation]
+"""
     
     raw_extraction = ""
     moondream_api_key = get_moondream_api_key()
