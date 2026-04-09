@@ -3,6 +3,16 @@ import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism' // VS Code Dark Theme
 import mermaid from 'mermaid'
+import {
+  getCareerPrompt,
+  getBehavioralPrompt,
+  getQuickAnswerPrompt,
+  getFullAnalysisPrompt,
+  getDesignPrompt,
+  getCodingPrompt,
+  getStrategyPrompt,
+  getConceptPrompt
+} from './promptTemplates'
 
 const SLASH_COMMANDS = [
   { id: 'explain', icon: '📖', label: 'Explain', desc: 'Deep technical explanation' },
@@ -526,28 +536,76 @@ function App() {
 
   const handleContextualAction = async (actionType) => {
     const summaryContext = editableSummary.trim()
+
+    // Grab the latest question for direct targeting
     const liveMsg = [...messages].reverse().find((m) => m.content?.includes('[Live System Audio]'))
     const rawText = liveMsg ? liveMsg.content.replace('🎧 **[Live System Audio]:**', '').trim() : ''
 
-    // Build the Hybrid Context Block
+    // --- NEW: Build Conversation History ---
+    // Grab the last 6 messages to provide rolling context without overflowing the prompt
+    const recentMessages = messages.slice(-6)
+    const conversationHistory = recentMessages
+      .map((m) => {
+        // Differentiate who said what for the LLM
+        const speaker = m.content?.includes('[Live System Audio]')
+          ? 'Interviewer'
+          : 'My Previous Answer'
+        return `${speaker}:\n${m.content}`
+      })
+      .join('\n\n')
+
+    // --- Build the Hybrid Context Block ---
     let contextBlock = ''
-    if (summaryContext && rawText) {
-      contextBlock = `[PRIMARY INTENT - User Summary]:\n"${summaryContext}"\n\n[SUPPORTING DETAILS - Raw Audio Transcript]:\n"${rawText}"`
-    } else if (summaryContext) {
-      contextBlock = `[PRIMARY INTENT - User Summary]:\n"${summaryContext}"`
-    } else if (rawText) {
-      contextBlock = `[Raw Audio Transcript]:\n"${rawText}"`
+
+    if (summaryContext) {
+      contextBlock += `[USER SUMMARY / OVERARCHING GOAL]:\n"${summaryContext}"\n\n`
+    }
+
+    if (conversationHistory) {
+      contextBlock += `[RECENT CONVERSATION HISTORY] (Use this to resolve pronouns like "that" or "it"):\n${conversationHistory}\n\n`
+    }
+
+    if (rawText) {
+      contextBlock += `[CURRENT QUESTION TO ANSWER]:\n"${rawText}"`
     }
 
     if (!contextBlock) {
       showMicToast('No active context found.')
       return
     }
-    // 3. Define the prompts based on the action
+
+    console.log('Context Block for Action:', contextBlock)
+
     let displayCommand = ''
     let augmentedPrompt = ''
 
     switch (actionType) {
+      case 'career':
+        displayCommand = 'Career & Project Follow-up'
+
+        // 1. Hit your Python FAISS database to grab the project details
+        try {
+          const ragResponse = await fetch('http://localhost:8000/search-career', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ transcript: rawText })
+          })
+          const ragData = await ragResponse.json()
+          console.log('RAG Data:', ragData)
+
+          contextBlock = `
+          [RELEVANT PAST EXPERIENCE]
+          ${ragData.context}
+          [LIVE INTERVIEW TRANSCRIPT]
+            ${rawText}
+          `
+        } catch (error) {
+          console.error('FAISS DB unreachable, falling back to default context.', error)
+        }
+
+        // 2. The specialized Follow-Up Prompt
+        augmentedPrompt = getCareerPrompt(contextBlock)
+        break
       case 'behavioral':
         displayCommand = 'Behavioral & Leadership (STAR Method)'
 
@@ -562,197 +620,66 @@ function App() {
 
           // Overwrite the default context with the hydrated RAG context
           contextBlock = `
-[RELEVANT PAST EXPERIENCE]
-${ragData.context}
-
-[LIVE INTERVIEW TRANSCRIPT]
-${rawText}
+            [RELEVANT PAST EXPERIENCE]
+            ${ragData.context}
+            [LIVE INTERVIEW TRANSCRIPT]
+            ${rawText}
+            Now, based STRICTLY on the [RECENT CONVERSATION HISTORY] above if available, generate the spoken response:
 `
+          console.log('Context Block for Behavioral Action:', contextBlock)
         } catch (error) {
           console.error('FAISS DB unreachable, falling back to default context.', error)
         }
 
         displayCommand = 'Behavioral & Leadership (STAR Method)'
-        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a behavioral interview answer using the STAR method designed specifically as a SPOKEN INTERVIEW SCRIPT.
-
-CRITICAL CONTEXT RULE: 
-If both a "User Summary" and "Raw Audio Transcript" are provided below, use the User Summary to identify the user's real past projects to use as the realistic setting for the story. Use the Raw Transcript to identify the core behavioral question being asked (e.g., conflict, failure, leadership, tight deadlines).
-
-Rules:
-1. Tone & Style: Act as a pragmatic Senior Software Engineer. Use first-person ("I realized we had a bottleneck..."). Be humble, highly collaborative, but explicitly own your impact. Avoid arrogant phrasing.
-2. THE PIVOT RULE (CRITICAL): Evaluate if the provided \`[RELEVANT PAST EXPERIENCE]\` actually matches the interviewer's specific question. 
-   - If it is a Direct Match: Proceed normally.
-   - If it is a Miss/Irrelevant (or contains a [SYSTEM WARNING]): DO NOT invent facts or hallucinate a perfect fit. Instead, pick the closest parallel theme from the provided context. You MUST start your Hook with a bridge phrase like: "I actually haven't faced that exact scenario recently, but a highly parallel challenge I faced was..."
-   - THE ECOSYSTEM TRANSLATION RULE (CRITICAL): You are interviewing for a Microsoft Full Stack AI Developer role. If the interviewer asks about a specific Microsoft technology (like Azure DevOps, Azure OpenAI, Logic Apps, Power BI) and it is NOT explicitly in the [RELEVANT PAST EXPERIENCE], DO NOT apologize or admit a gap. Instead, confidently adapt the provided context using Gemini's internal knowledge of Azure.
-   3. NO chatbot fluff. Start immediately with heading 1.
-4. DYNAMIC FORMATTING: Format EXACTLY with these markdown headings IN THIS EXACT ORDER:
-   ### 1. The Hook (TL;DR)
-   ### 2. Situation & Task
-   ### 3. Action (My Contribution)
-   ### 4. Result & Metrics
-   ### 5. The Retrospective (The Senior Perspective)
-5. Under "The Hook", write 1 punchy spoken sentence summarizing the story. (Use the bridge phrase from Rule 2 if you are pivoting).
-6. Under "Situation & Task", write 2 sentences setting the stage. Keep the context brief and focused on the business problem.
-7. ACTION FORMATTING: Under "Action", you MUST provide a Markdown bulleted list of 3 specific steps you took. CRITICAL: You MUST format each bullet exactly like this: \`* **[Action Verb]:** [Explanation]\`. Focus on pragmatic problem-solving, compromise, and communication.
-8. Under "Result & Metrics", write 2 sentences detailing the positive business outcome. Include realistic, grounded metrics (e.g., "We hit the deadline and reduced deployment time by 40%").
-9. Under "The Retrospective", write 1 or 2 sentences explaining what this taught you or what processes you changed because of it (e.g., "Because of that incident, I now enforce early alignment meetings..."). This is critical for showing Senior-level growth.
-
-Context Provided:
-${contextBlock}`
+        augmentedPrompt = getBehavioralPrompt(contextBlock)
         break
       case 'quick_answer':
         displayCommand = 'Quick Answer'
-        augmentedPrompt = `[Quick Command: QUICK_ANSWER]
-You are a pragmatic Senior Software Engineer. The user needs an immediate, on-the-spot answer to survive a live conversation or interview.
-
-Task:
-${contextBlock}
-
-CRITICAL RULES FOR SPEED:
-1. EXTREME BREVITY: Your entire response MUST be 5 sentences or less. CRITICAL: Use short, punchy sentences (max 15-20 words per sentence). Write exactly like a spoken conversation, do NOT output dense, robotic run-on sentences.
-2. NO FORMATTING OVERHEAD: Do NOT use markdown headings, code blocks, or lists. Output plain text only. 
-3. DIRECT ANSWER FIRST: Sentence 1 must definitively answer what the code does, what the bug is, or what the core concept is. 
-4. THE "WHY" SECOND: Sentence 2 and 3 should state the "why" or the immediate fix in a grounded, conversational tone.
-5. NO FLUFF: No greetings, no "Here is the answer." Start typing the solution on the very first word. 
-6. PERSONA: Sound like a colleague whispering the answer to you across the desk. Use collaborative phrasing ("Looks like...", "I'd just...").`
+        augmentedPrompt = getQuickAnswerPrompt(contextBlock)
         break
       case 'full_analysis':
         displayCommand = 'Full Interview Analysis'
-        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: You are an elite Technical Interview Assistant. Analyze the provided interview context and generate a complete tactical breakdown.
 
-CRITICAL CONTEXT RULE (THE "CONTEXT DRIFT" CHECK): 
-First, compare the "User Summary" and the "Raw Audio Transcript" (if both exist).
-- SOFT PIVOT: If they are related, the User Summary is the overarching goal. Use the Transcript to identify the current sub-topic or interruption.
-- HARD PIVOT (BRAND NEW QUESTION): If the Transcript is completely unrelated to the User Summary, ASSUME THE SUMMARY IS OUTDATED. You MUST ignore the old User Summary completely and base your entire analysis on the Raw Audio.
+        // --- NEW: ALWAYS fetch RAG data to ground the analysis in your career ---
+        let globalCareerContext = ''
+        try {
+          const ragResponse = await fetch('http://localhost:8000/search-career', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ transcript: rawText })
+          })
+          const ragData = await ragResponse.json()
+          if (ragData.context && !ragData.context.includes('[NO CAREER DATA FOUND]')) {
+            globalCareerContext = `\n\n[USER CAREER CONTEXT]\n(Use this to ground your technical advice in the user's actual experience if relevant to the question):\n${ragData.context}\n`
+          }
+        } catch (error) {
+          console.error('FAISS DB unreachable for global context.', error)
+        }
 
-Rules:
-1. NO chatbot fluff. NO introductory sentences. Start immediately with heading 1.
-2. Format EXACTLY with these headings:
-   ### 1. The True Intent
-   ### 2. The Current Pivot & Cheat Sheet
-   ### 3. Architect Follow-Ups
-   ### 4. Category
-
-3. Under "The True Intent", write EXACTLY 1 to 2 clear sentences extracting the main task. CRITICAL: If they use misleading words (like "design" when asking about metrics), explicitly call out the true intent here. If a Hard Pivot occurred, explicitly state: "[HARD PIVOT] The interviewer has moved to a brand new question: [New Task]."
-4. Under "Category", output EXACTLY ONE tag based on the CURRENT Question:
-   - [CODING] (Algorithms, data structures, writing code)
-   - [STRATEGY] (Product metrics, evaluating success, user satisfaction, telemetry. CRITICAL: If they ask HOW TO MEASURE or EVALUATE something, it is ALWAYS [STRATEGY].)
-   - [CONCEPT] (Explaining how a technology works, comparing tools, selecting a specific technology like a database, or discussing trade-offs/criteria for a single component. CRITICAL: Use this if they ask "Which tool should we use and why?")
-   - [SYSTEM DESIGN] (End-to-end technical architecture, system scaling, connecting APIs, drawing flowcharts. CRITICAL: Do NOT use this tag if they are just asking you to compare tools or list selection criteria for a single component.)
-   - [BEHAVIORAL] Use this ONLY if the interviewer explicitly asks about your past experiences, conflicts, failures, or leadership (e.g., "Tell me about a time...", "Give an example of when you..."). DO NOT use this tag if they are asking you to define a technical concept or compare technologies.
-5. Under "The Current Pivot & Cheat Sheet", first write EXACTLY 1 bolded sentence stating what they are asking for right this second. Immediately below that, write EXACTLY 3 short bullet points in a first-person spoken tone that the candidate can read directly out loud to answer it.
-6. Under "Architect Follow-Ups", write 2 highly intelligent clarifying questions tailored to the CURRENT question.
-
-Context Provided:
-${contextBlock}`
+        augmentedPrompt = getFullAnalysisPrompt(contextBlock, globalCareerContext)
         break
 
       case 'design':
         displayCommand = 'System Design'
-        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a SYSTEM DESIGN architecture designed specifically as a SPOKEN INTERVIEW SCRIPT.
-
-CRITICAL CONTEXT RULE: 
-If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary (which may contain OCR text) is the ABSOLUTE TRUTH regarding the core question. Use the Raw Transcript ONLY to hunt for extra technical constraints.
-
-Rules:
-1. Tone & Style: Act as a pragmatic Senior Software Engineer with ~6 years of hands-on experience. Speak in a grounded, practical tone. Avoid grandiose 'Principal Architect' enterprise jargon (e.g., do not talk about "multi-year organizational migrations" or "abstract platform meshes"). 
-2. Use collaborative phrasing ("I'd want to double-check the exact read-volume..."). CRITICAL: Actively suggest simpler, 'good enough' alternatives for early-stage scaling (e.g., "We could use Flink here, but honestly a simple Lambda might be enough for V1"). Do not sound like an overly confident textbook. Focus on getting the job done efficiently.
-3. Format EXACTLY with these headings:
-   ### 1. High-Level Architecture (Spoken overview)
-   ### 2. End-to-End Data Flow (Conversational walkthrough)
-   ### 3. Architecture Diagram
-   ### 4. Database Strategy (Spoken justification)
-   ### 5. Scalability & Bottlenecks
-3. Under "Architecture Diagram", you MUST provide a valid Mermaid.js flowchart. 
-   - CRITICAL: You MUST wrap the diagram EXACTLY in markdown code blocks like this:
-   \`\`\`mermaid
-   flowchart TD
-   A["Node 1"] --> B["Node 2"]
-   \`\`\`
-   - Use double quotes around all node names to prevent syntax errors.
-   - CRITICAL: For any node label longer than 3 words, you MUST insert a <br/> tag to logically wrap the text to the next line (e.g., A["Stream Processor:<br/>Quality Eval"]). Do not let single lines get too long.
-4. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after section 5.
-5. NO chatbot fluff. NO introductory sentences. NO code snippets EXCEPT for the Mermaid diagram block.
-
-Context Provided:
-${contextBlock}`
+        augmentedPrompt = getDesignPrompt(contextBlock)
         break
 
       // 4. CODING DEEP DIVE ANSWER
       case 'coding':
         displayCommand = 'Coding Deep Dive'
-        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a coding solution or explanation designed specifically as a SPOKEN INTERVIEW SCRIPT.
-
-CRITICAL CONTEXT RULE: 
-If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH. Use the Raw Transcript to detect if this is a FOLLOW-UP question.
-
-Rules:
-1. Tone & Style: Act as a pragmatic Senior Software Engineer with ~6 years of experience. Use first-person ("Since we need O(N) time, I'd reach for...").
-2. Explain trade-offs practically. Mention that while a hyper-optimized solution exists, you generally prefer readable, maintainable code for the team unless performance is a strict bottleneck.
-3. ZERO IMPORTS OR LIBRARIES: Solve problems using strictly built-in language features.
-4. DYNAMIC FORMATTING: 
-   - IF solving a new problem: Format EXACTLY with: ### 1. Optimal Approach, ### 2. Detailed Complexity Analysis, ### 3. Code Implementation.
-   - IF answering a FOLLOW-UP: DO NOT generate a code block unless asked to write new code. Format EXACTLY with: ### 1. Spoken Explanation. Write a 2-paragraph conversational answer.
-5. COMPLEXITY RULE: Under "### 2. Detailed Complexity Analysis",you MUST start by explicitly stating the final Big-O notation in bold (e.g., "**Time Complexity:** O(N * M)", "**Space Complexity:** O(N)"),Immediately following that You MUST write a detailed, conversational paragraph breaking down EXACTLY where the time and space costs come from. Discuss memory allocation bottlenecks (like string immutability), worst-case degradation, and why this specific approach scales safely to the constraints mentioned (e.g., 1 million records).
-6. Code Block Rules: Wrap code in standard Markdown with proper newlines. Embed your narrative inside the code as highly detailed inline comments. Include an "Example Usage" section.
-
-7. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after finishing. NO chatbot fluff.
-
-Context Provided:
-${contextBlock}`
+        augmentedPrompt = getCodingPrompt(contextBlock)
         break
 
       // 5. STRATEGY, METRICS & PRODUCT ANSWER
       case 'strategy':
         displayCommand = 'Strategy & Metrics deep dive'
-        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a product strategy and metrics explanation designed specifically as a SPOKEN INTERVIEW SCRIPT.
-
-CRITICAL CONTEXT RULE: 
-If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH. Use the Raw Transcript to detect if this is a FOLLOW-UP question.
-
-Rules:
-1. Tone & Style: Act as a pragmatic Senior Software Engineer with ~6 years of experience. Act as the CANDIDATE answering the interviewer. Use first-person ("To measure this, I would track..."). Do NOT act like an interviewer grading a candidate.
-2. NO chatbot fluff. Start immediately with heading 1.
-3. DYNAMIC FORMATTING: Format EXACTLY with these markdown headings IN THIS EXACT ORDER:
-   ### 1. Core Strategy
-   ### 2. Explicit Metrics (The Telemetry)
-   ### 3. Implicit Metrics (User Behavior)
-   ### 4. Edge Cases & Risks
-4. Under "Core Strategy", write a 4-sentence conversational approach on how you would roll this out and measure its success (e.g., "I'd start with a shadow rollout or A/B test before committing..."). Do NOT describe the system architecture here.
-5. Under "Explicit Metrics", provide a Markdown bulleted list of 4 specific technical metrics you would monitor. CRITICAL: You MUST format each bullet exactly like this: * **[Metric Name]:** [Spoken explanation of why].
-6. Under "Implicit Metrics", provide a Markdown bulleted list of 3 specific user-behavior metrics. CRITICAL: You MUST format each bullet exactly like this: * **[Metric Name]:** [Spoken explanation].
-7. Under "Edge Cases & Risks", provide a 3-sentence explanation of a real-world pitfall (e.g., "One risk here is cold-start latency causing users to bounce...").
-8. FINAL FORMATTING CHECK: Look at Sections 2 and 3. You MUST use standard Markdown bullet points (*) and you MUST bold the metric name (**Name**). If you output "MetricName: explanation" instead of "* MetricName: explanation", you have failed.
-Context Provided:
-${contextBlock}`
+        augmentedPrompt = getStrategyPrompt(contextBlock)
         break
       // 6. TECHNICAL CONCEPT / THEORY (For verbal explanations & comparisons)
       case 'concept':
         displayCommand = 'Technical Deep Dive'
-        augmentedPrompt = `[Quick Command: CONTEXT_ACTION]
-Task: Provide a TECHNICAL DEEP DIVE designed specifically as a SPOKEN INTERVIEW SCRIPT. 
-
-CRITICAL CONTEXT RULE: 
-If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH. Use the Raw Transcript ONLY for extra constraints.
-
-Rules:
-1. Tone & Style: Act as a pragmatic Senior Engineer (~6 years experience). Speak smoothly and naturally.
-2. Compare tools based on operational reality, developer velocity, and team bandwidth. (e.g., "If my team doesn't have dedicated DevOps bandwidth, I almost always prefer the managed service, even if it costs a bit more..."). Avoid suggesting massive custom-built platforms.
-3. Format EXACTLY with these headings:
-   ### 1. The Elevator Pitch (Your opening statement)
-   ### 2. Core Mechanics (Explain how it works conversationally)
-   ### 3. Top Options & Trade-offs
-   ### 4. Production Example (Walk them through a realistic scenario)
-4. Under "Top Options & Trade-offs", DO NOT USE A TABLE. Write a natural, spoken comparison of 3 tools. 
-5. CRITICAL: Output the structure EXACTLY ONCE. STOP generating immediately after section 4. NO chatbot fluff.
-
-Context Provided:
-${contextBlock}`
+        augmentedPrompt = getConceptPrompt(contextBlock)
         break
     }
 
@@ -766,8 +693,25 @@ ${contextBlock}`
         if (actionType === 'quick_answer') {
           // Prevent triggering if a request is already in flight
           if (!isThinking) {
-            console.log('🔥 Stealth Hotkey Triggered: Full Analysis')
+            console.log('🔥 Stealth Hotkey Triggered Quick Answer')
             handleContextualAction('quick_answer')
+          }
+        }
+      })
+      return () => cleanup?.()
+    }
+
+    return undefined
+  }, [isThinking, handleContextualAction])
+
+  useEffect(() => {
+    if (window.api && window.api.onTriggerAction) {
+      const cleanup = window.api.onTriggerAction((actionType) => {
+        if (actionType === 'full_analysis') {
+          // Prevent triggering if a request is already in flight
+          if (!isThinking) {
+            console.log('🔥 Stealth Hotkey Triggered: Full Analysis')
+            handleContextualAction('full_analysis')
           }
         }
       })
@@ -1766,12 +1710,12 @@ ${contextBlock}`
             >
               ❓ Behavioral
             </button>
-            {/* <button
+            <button
               onClick={() => handleContextualAction('career')}
               className="px-3 py-1.5 bg-emerald-900/50 hover:bg-emerald-800 text-emerald-200 text-xs font-semibold rounded-md border border-emerald-700 transition-colors"
             >
               💼 Career / Project
-            </button> */}
+            </button>
           </div>
         )}
         {pendingCommand !== null && (
@@ -1803,6 +1747,15 @@ ${contextBlock}`
               <option value="lightning:lightning-ai/gpt-oss-120b">GPT OSS (120B)</option>
               <option value="lightning:lightning-ai/llama-3.3-70b">Llama 3.3 (70B)</option>
               <option value="lightning:lightning-ai/DeepSeek-V3.1">DeepSeek V3.1</option>
+              <option value="lightning:anthropic/claude-sonnet-4-20250514">Claude Sonnet 4</option>
+              <option value="lightning:anthropic/claude-sonnet-4-5-20250929">
+                Claude Sonnet 4.5
+              </option>
+              <option value="lightning:anthropic/claude-sonnet-4-6">Claude Sonnet 4.6</option>
+              <option value="lightning:lightning-ai/gemma-4-31B-it">Gemma 4</option>
+              <option value="lightning:openai/gpt-3.5-turbo">GPT 3.5 Turbo</option>
+              <option value="lightning:google/gemini-3-flash-preview">Gemini 3 Flash</option>
+
               {/* <option value="lightning:google/gemini-3-pro-preview">Gemini 3 Pro-preview</option> */}
             </optgroup>
             <optgroup label="☁️Ollama Cloud APIs">

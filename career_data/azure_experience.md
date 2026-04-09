@@ -2,6 +2,8 @@
 
 ## Section: Cloud Architecture & DevOps
 
+**Tech Stack:** Azure DevOps
+
 ### Challenge 1: Azure DevOps Pipeline Security & Optimization
 
 - **Situation:** We needed to standardize our CI/CD pipelines and ensure strict security compliance for our web applications before pushing to production.

@@ -54,7 +54,7 @@ function createWindow() {
   // Hides the window from screen capture and screen sharing.
   mainWindow.setContentProtection(true)
   mainWindow.setIgnoreMouseEvents(true, { forward: true })
-  // mainWindow.webContents.openDevTools({ mode: 'detach' })
+  mainWindow.webContents.openDevTools({ mode: 'detach' })
 
   // Start in "click-through" mode
   mainWindow.setIgnoreMouseEvents(true, { forward: true })
@@ -470,29 +470,19 @@ app.whenReady().then(() => {
     }
   })
 
-  // --- NEW: Scroll Hotkeys ---
-  registerShortcut('CommandOrControl+2', () => {
-    if (mainWindow) mainWindow.webContents.send('scroll-action', 'down')
-  })
-  registerShortcut('CommandOrControl+num2', () => {
-    if (mainWindow) mainWindow.webContents.send('scroll-action', 'down')
+  // Works for the standard top-row 5 key
+  registerShortcut('CommandOrControl+Shift+Left', () => {
+    if (mainWindow) mainWindow.webContents.send('trigger-action', 'quick_answer')
   })
 
   // Works for the standard top-row 5 key
-  registerShortcut('CommandOrControl+5', () => {
-    if (mainWindow) mainWindow.webContents.send('trigger-action', 'quick_answer')
+  registerShortcut('CommandOrControl+Shift+Right', () => {
+    if (mainWindow) mainWindow.webContents.send('trigger-action', 'full_analysis')
   })
 
   // Works for the Numeric Keypad 5 key
-  registerShortcut('CommandOrControl+num5', () => {
-    if (mainWindow) mainWindow.webContents.send('trigger-action', 'quick_answer')
-  })
-
-  registerShortcut('CommandOrControl+8', () => {
-    if (mainWindow) mainWindow.webContents.send('scroll-action', 'up')
-  })
-  registerShortcut('CommandOrControl+num8', () => {
-    if (mainWindow) mainWindow.webContents.send('scroll-action', 'up')
+  registerShortcut('CommandOrControl+Shift+num4', () => {
+    if (mainWindow) mainWindow.webContents.send('trigger-action', 'full_analysis')
   })
 
   // Listen for React telling us to hide (e.g., when user presses Escape or Enter)
