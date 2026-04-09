@@ -365,9 +365,17 @@ function App() {
               const { value, done } = await reader.read()
               if (done) break
               aiText += decoder.decode(value, { stream: true })
-              setMessages((prev) =>
-                prev.map((msg) => (msg.id === aiId ? { ...msg, content: aiText } : msg))
-              )
+              setMessages((prev) => {
+                const newMessages = [...prev]
+                const targetIndex = newMessages.findIndex((msg) => msg.id === aiId)
+                if (targetIndex !== -1) {
+                  newMessages[targetIndex] = {
+                    ...newMessages[targetIndex],
+                    content: aiText
+                  }
+                }
+                return newMessages
+              })
               await new Promise((resolve) => requestAnimationFrame(resolve))
             }
           } catch (error) {
@@ -876,8 +884,11 @@ function App() {
 
     try {
       const backendMessages = [...messages, { role: 'user', content: payloadText }]
+      const validContextMessages = backendMessages.filter(
+        (msg) => msg.content && msg.content.trim() !== ''
+      )
       const MAX_CONTEXT_MESSAGES = 10
-      const rollingContextMessages = backendMessages.slice(-MAX_CONTEXT_MESSAGES)
+      const rollingContextMessages = validContextMessages.slice(-MAX_CONTEXT_MESSAGES)
 
       const res = await fetch('http://127.0.0.1:8000/agent/execute', {
         method: 'POST',
@@ -916,9 +927,17 @@ function App() {
         }
         charCount += textChunk.length // Track length for TPS calc
 
-        setMessages((prev) =>
-          prev.map((msg) => (msg.id === aiMessageId ? { ...msg, content: assistantReply } : msg))
-        )
+        setMessages((prev) => {
+          const newMessages = [...prev]
+          const targetIndex = newMessages.findIndex((msg) => msg.id === aiMessageId)
+          if (targetIndex !== -1) {
+            newMessages[targetIndex] = {
+              ...newMessages[targetIndex],
+              content: assistantReply
+            }
+          }
+          return newMessages
+        })
 
         // Give Chromium a paint opportunity between streamed chunks in production builds.
         await new Promise((resolve) => requestAnimationFrame(resolve))
@@ -1537,9 +1556,17 @@ function App() {
         const textChunk = decoder.decode(value, { stream: true })
         assistantReply += textChunk
 
-        setMessages((prev) =>
-          prev.map((msg) => (msg.id === aiMessageId ? { ...msg, content: assistantReply } : msg))
-        )
+        setMessages((prev) => {
+          const newMessages = [...prev]
+          const targetIndex = newMessages.findIndex((msg) => msg.id === aiMessageId)
+          if (targetIndex !== -1) {
+            newMessages[targetIndex] = {
+              ...newMessages[targetIndex],
+              content: assistantReply
+            }
+          }
+          return newMessages
+        })
 
         // Give Chromium a paint opportunity between streamed chunks in production builds.
         await new Promise((resolve) => requestAnimationFrame(resolve))
