@@ -54,7 +54,7 @@ function createWindow() {
   // Hides the window from screen capture and screen sharing.
   mainWindow.setContentProtection(true)
   mainWindow.setIgnoreMouseEvents(true, { forward: true })
-  mainWindow.webContents.openDevTools({ mode: 'detach' })
+  // mainWindow.webContents.openDevTools({ mode: 'detach' })
 
   // Start in "click-through" mode
   mainWindow.setIgnoreMouseEvents(true, { forward: true })
@@ -477,11 +477,6 @@ app.whenReady().then(() => {
 
   // Works for the standard top-row 5 key
   registerShortcut('CommandOrControl+Shift+Right', () => {
-    if (mainWindow) mainWindow.webContents.send('trigger-action', 'full_analysis')
-  })
-
-  // Works for the Numeric Keypad 5 key
-  registerShortcut('CommandOrControl+Shift+num4', () => {
     if (mainWindow) mainWindow.webContents.send('trigger-action', 'full_analysis')
   })
 

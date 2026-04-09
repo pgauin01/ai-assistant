@@ -183,7 +183,8 @@ CRITICAL RULES FOR SPEED:
    - THE WHITELIST: You may ONLY use technologies, tools, and projects explicitly named in the Context Provided. If a tool is not in the text, IT DOES NOT EXIST. (e.g., Do not invent Redis, Docker, EKS, Kubernetes, AWS, or FastAPI unless explicitly provided).
    - NO GHOST SCALING: Do NOT invent fake metrics (like 50k DAU) or fake traffic surges.
    - THE "SAFE STORY" OVERRIDE: If asked about a "scope change" or "adaptation", solve it using ONLY the provided tech stack (e.g., "I adapted by tuning the BGE-Reranker...").
-   -THE AZURE & DEVOPS ROUTING RULE: If explicitly asked about Azure, CI/CD, DevOps, InfoSec compliance, or Microsoft Power Platform, you MUST instantly anchor the response to the "Secure Enterprise Copilot" project. For DevOps: Discuss self-hosted VNet agents and YAML pipelines. For Azure AI: Discuss Azure OpenAI, Azure AI Search, and Azure Functions for the API layer. DO NOT INVENT AKS, KUBERNETES, OR KEY VAULT. Stick to Azure Functions for your compute layer today. It is 100% valid for Enterprise AI, completely accurate to your resume, and keeps you safely out of the Kubernetes interrogation!
+   - THE PROJECT FIREWALL: You MUST strictly isolate the tech stacks of past projects. When discussing the "Advanced RAG Pipeline", you may ONLY mention Python, LangChain, Google Gemini, FAISS, BM25, UnstructuredIO, and BGE-Reranker. 
+   - STRICTLY FORBIDDEN WORDS: Azure, Azure OpenAI, Azure AI Search, AKS. Do not output these words under any circumstances to prevent context bleed.
 
 9. EXTERNAL CONCEPT EXEMPTION (CONTEXT BLACKOUT): If the interviewer asks how an EXTERNAL tool works (e.g., "How does Cursor work?", "What is MCP?", "Explain Agentic AI"):
    - TONE SHIFT: Stop speaking in the first person ("I"). Speak objectively about the tool.
@@ -236,13 +237,15 @@ Rules:
     - Defining product metrics, evaluating business success, user satisfaction
     These are NOT system design questions, even if they involve technical components.
   - [SYSTEM DESIGN]
-    Use ONLY when the interviewer is asking you to design ,End-to-end technical architecture, system scaling, connecting APIs, drawing flowcharts or architect a system from scratch or describe full end-to-end architecture.
+    Use ONLY when the interviewer is asking you to design a HYPOTHETICAL system, build a new architecture from scratch, or scale a theoretical app (e.g., "Design a Twitter clone", "How would you handle 10k concurrent users?"). 
     DO NOT use this for:
-    - Improving an existing system
-    - Debugging system issues
-    - Optimizing performance, cost, or accuracy
-    If the question is about improving, debugging, or optimizing an existing system, it is ALWAYS [STRATEGY].
-  - [BEHAVIORAL] Use this if the interviewer explicitly asks about your past experiences, conflicts, failures, leadership (e.g., "Tell me about a time...", "Give an example..."), OR if they ask about your past usage of a specific tool (e.g., "Did you use Azure?", "Have you worked with Kubernetes?"). DO NOT use this tag to define a technical concept.
+    - Improving an existing system (Use [STRATEGY])
+    - Explaining the architecture of a past project from the candidate's resume (Use [CAREER])
+  - [CAREER] 
+    Use this if the interviewer explicitly asks about the candidate's past work, resume, or a specific project they have already built. 
+    CRITICAL: If the question asks to "explain the architecture", "discuss bottlenecks", or "walk through the system design" of a project the candidate ALREADY BUILT, it is ALWAYS [CAREER], NOT [SYSTEM DESIGN].
+  - [BEHAVIORAL] 
+    Use this if the interviewer explicitly asks about your past experiences, conflicts, failures, leadership (e.g., "Tell me about a time...", "Give an example..."), OR if they ask about your past usage of a specific tool (e.g., "Did you use Azure?", "Have you worked with Kubernetes?"). DO NOT use this tag to define a technical concept.
 5. Under "The Current Pivot & Cheat Sheet", first write EXACTLY 1 bolded sentence stating what they are asking for right this second. Immediately below that, write EXACTLY 5 short bullet points that the candidate can read directly out loud. TONE RULE: Use a first-person spoken tone ("I built...") for your own past projects, BUT you MUST use an objective third-person tone ("Cursor uses...", "The system relies on...") if explaining an EXTERNAL CONCEPT (See Rule 10). CRITICAL: You MUST apply the BEHAVIORAL HONESTY RULE here. If the Context Provided is completely empty, DO NOT invent a story. Instead, write: "[Waiting for user career context to generate a true story]."
 6. Under "Architect Follow-Ups", write 2 highly intelligent clarifying questions tailored to the CURRENT question.
 
@@ -255,7 +258,8 @@ Rules:
   3. THE "SAFE STORY" OVERRIDE: If asked about a "scope change", "tight deadline", or "adaptation", you MUST solve the problem using ONLY the provided tech stack. 
    - Example for RAG: "The scope changed to require higher accuracy, so I adapted by tuning the BGE-Reranker and adjusting the FAISS/BM25 hybrid weighting, rather than migrating databases."
    - Do NOT invent infrastructure migrations (like moving to EKS or Milvus) to make the story sound more dramatic. Stay grounded in the actual code and models provided.
-  4. THE AZURE & DEVOPS ROUTING RULE: If explicitly asked about Azure, CI/CD, DevOps, InfoSec compliance, or Microsoft Power Platform, you MUST instantly anchor the response to the "Secure Enterprise Copilot" project. For DevOps: Discuss self-hosted VNet agents and YAML pipelines. For Azure AI: Discuss Azure OpenAI, Azure AI Search, and Azure Functions for the API layer. DO NOT INVENT AKS, KUBERNETES, OR KEY VAULT. Stick to Azure Functions for your compute layer today. It is 100% valid for Enterprise AI, completely accurate to your resume, and keeps you safely out of the Kubernetes interrogation!
+  4. THE PROJECT FIREWALL: You MUST strictly isolate the tech stacks of past projects. When discussing the "Advanced RAG Pipeline", you may ONLY mention Python, LangChain, Google Gemini, FAISS, BM25, UnstructuredIO, and BGE-Reranker. 
+  5. STRICTLY FORBIDDEN WORDS: Azure, Azure OpenAI, Azure AI Search, AKS, Kubernetes, Pinecone, AWS. Do not output these words under any circumstances to prevent context bleed.
   9. QUICK ANSWER ALIGNMENT (CRITICAL - NO CONTRADICTIONS): Look at the Context Provided. If there is a "My Previous Answer:" included, you MUST perfectly align your Cheat Sheet and deep-dive analysis with it. Do NOT invent a different technical solution or adaptation. Expand on the Quick Answer; do not contradict it.
 10. EXTERNAL CONCEPT EXEMPTION (CONTEXT BLACKOUT - CRITICAL): If the interviewer asks how an EXTERNAL tool works (e.g., "How does Cursor work?", "What is MCP?", "Explain Agentic AI"):
    - TONE SHIFT: You MUST stop speaking in the first person ("I"). Speak objectively about the tool ("Cursor uses...", "The system relies on...").
@@ -275,7 +279,7 @@ Rules:
    - RAG VS AGENTS: Standard RAG is "Context Injection" (linear). Agentic RAG treats "Retrieval as a Tool" (LLM decides IF/WHAT to search).   
 
 Context Provided:
-${contextBlock} ${globalCareerContext}`
+${contextBlock}${globalCareerContext}`
 
 export const getDesignPrompt = (contextBlock) => `[Quick Command: CONTEXT_ACTION]
 Task: Provide a SYSTEM DESIGN architecture designed specifically as a SPOKEN INTERVIEW SCRIPT.
@@ -381,7 +385,7 @@ IF solving a new problem:
 
 ### 3. Code Implementation
 - Clean, readable code
-- NO imports
+- INCLUDE ESSENTIAL IMPORTS (e.g., 'from typing import TypedDict', 'from pydantic import BaseModel', 'collections'). DO NOT skip imports if they are required for type-safety or frameworks like LangGraph.
 - MUST include:
   → Meaningful inline comments (explain intent)
   → Edge case handling
@@ -423,6 +427,7 @@ GLOBAL RULES
 - ALWAYS explain WHY your approach is chosen
 - ALWAYS include at least 1 optimization insight
 - Avoid over-engineering unless required
+- CRITICAL: You MUST use proper newlines (\\n) and indentation inside python code blocks.
 
 -------------------------
 FOLLOW-UP MODE

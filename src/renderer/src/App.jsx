@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react'
+﻿import { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism' // VS Code Dark Theme
@@ -169,6 +169,31 @@ function App() {
     }, duration)
   }
 
+  const renderMermaidDiagrams = useCallback(async () => {
+    try {
+      const nodes = Array.from(document.querySelectorAll('.mermaid'))
+      for (const node of nodes) {
+        const source = (
+          node.getAttribute('data-mermaid-definition') ||
+          node.textContent ||
+          ''
+        ).trim()
+        const prevSource = node.getAttribute('data-mermaid-source') || ''
+        const hasSvg = Boolean(node.querySelector('svg'))
+
+        // React can reinsert raw text in these nodes on re-render (e.g., after restore/focus).
+        if (source && (source !== prevSource || !hasSvg)) {
+          node.textContent = source
+          node.removeAttribute('data-processed')
+          node.setAttribute('data-mermaid-source', source)
+        }
+      }
+      await mermaid.run({ nodes })
+    } catch (e) {
+      console.error('Mermaid rendering failed:', e)
+    }
+  }, [])
+
   // --- NEW: Render Mermaid Diagrams ---
   useEffect(() => {
     mermaid.initialize({
@@ -206,35 +231,30 @@ function App() {
       },
       securityLevel: 'loose'
     })
+  }, [])
 
+  useEffect(() => {
     // Re-render Mermaid blocks when their source text changes (streaming-safe).
-    const timer = setTimeout(
-      async () => {
-        try {
-          const nodes = Array.from(document.querySelectorAll('.mermaid'))
-          for (const node of nodes) {
-            const source = (
-              node.getAttribute('data-mermaid-definition') ||
-              node.textContent ||
-              ''
-            ).trim()
-            const prevSource = node.getAttribute('data-mermaid-source') || ''
-            if (source && source !== prevSource) {
-              node.textContent = source
-              node.removeAttribute('data-processed')
-              node.setAttribute('data-mermaid-source', source)
-            }
-          }
-          await mermaid.run({ nodes })
-        } catch (e) {
-          console.error('Mermaid rendering failed:', e)
-        }
-      },
-      isThinking ? 220 : 80
-    )
+    const timer = setTimeout(() => renderMermaidDiagrams(), isThinking ? 220 : 80)
 
     return () => clearTimeout(timer)
-  }, [messages, isThinking])
+  }, [messages, isThinking, renderMermaidDiagrams])
+
+  useEffect(() => {
+    const rerenderOnVisible = () => {
+      if (document.visibilityState === 'visible') {
+        renderMermaidDiagrams()
+      }
+    }
+
+    window.addEventListener('focus', renderMermaidDiagrams)
+    document.addEventListener('visibilitychange', rerenderOnVisible)
+
+    return () => {
+      window.removeEventListener('focus', renderMermaidDiagrams)
+      document.removeEventListener('visibilitychange', rerenderOnVisible)
+    }
+  }, [renderMermaidDiagrams])
 
   useEffect(() => {
     isRecordingRef.current = isRecording
@@ -735,12 +755,20 @@ function App() {
 
   useEffect(() => {
     if (window.api && window.api.onTriggerAction) {
-      const cleanup = window.api.onTriggerAction((actionType) => {
+      const cleanup = window.api.onTriggerAction(async (actionType) => {
         if (actionType === 'quick_answer') {
           // Prevent triggering if a request is already in flight
           if (!isThinking) {
-            console.log('🔥 Stealth Hotkey Triggered Quick Answer')
-            handleContextualAction('quick_answer')
+            console.log('🔥 Stealth Hotkey Triggered COMBO: Quick Answer + Full Analysis')
+
+            // 1. Trigger and wait for Quick Answer to completely finish streaming
+            await handleContextualAction('quick_answer')
+
+            // 2. Add a slight 500ms delay so the UI breathes before the next command
+            await new Promise((resolve) => setTimeout(resolve, 500))
+
+            // 3. Automatically trigger Full Analysis right after!
+            await handleContextualAction('full_analysis')
           }
         }
       })
