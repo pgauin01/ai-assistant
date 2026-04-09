@@ -30,6 +30,7 @@ const SLASH_COMMANDS = [
 ]
 
 const BACKEND_BASE_URL = 'http://127.0.0.1:8000'
+const LIVE_AUDIO_PREFIX = '🎧 **[Live System Audio]:**'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const createMeetingSessionId = () =>
@@ -81,6 +82,7 @@ function App() {
   const [isLiveTranscribing, setIsLiveTranscribing] = useState(false)
   const isLiveTranscribingRef = useRef(false)
   const liveWsRef = useRef(null)
+  const activeAudioIdRef = useRef(null)
   const meetingSessionIdRef = useRef(createMeetingSessionId())
   const [isSaving, setIsSaving] = useState(false)
   const [isBackendReady, setIsBackendReady] = useState(false)
@@ -325,6 +327,7 @@ function App() {
       const cleanup = window.api.onMoondreamTrigger(() => {
         void (async () => {
           const tempId = Date.now()
+          const aiId = `${tempId}-ai`
           setMessages((prev) => [
             ...prev,
             {
@@ -355,35 +358,42 @@ function App() {
 
             setMessages((prev) => [
               ...prev.filter((msg) => msg.id !== tempId),
-              { role: 'assistant', content: '' }
+              { id: aiId, role: 'assistant', content: '' }
             ])
 
             while (true) {
               const { value, done } = await reader.read()
               if (done) break
               aiText += decoder.decode(value, { stream: true })
-              setMessages((prev) => {
-                const newMsgs = [...prev]
-                const lastIndex = newMsgs.length - 1
-                if (lastIndex >= 0) {
-                  newMsgs[lastIndex] = {
-                    ...newMsgs[lastIndex],
-                    content: aiText
-                  }
-                }
-                return newMsgs
-              })
+              setMessages((prev) =>
+                prev.map((msg) => (msg.id === aiId ? { ...msg, content: aiText } : msg))
+              )
               await new Promise((resolve) => requestAnimationFrame(resolve))
             }
           } catch (error) {
             console.error('Moondream Pipeline Failed:', error)
-            setMessages((prev) => [
-              ...prev.filter((msg) => msg.id !== tempId),
-              {
-                role: 'assistant',
-                content: 'Moondream pipeline failed. Check backend logs and retry.'
+            setMessages((prev) => {
+              const withoutTemp = prev.filter((msg) => msg.id !== tempId)
+              const hasAiMessage = withoutTemp.some((msg) => msg.id === aiId)
+              if (hasAiMessage) {
+                return withoutTemp.map((msg) =>
+                  msg.id === aiId
+                    ? {
+                        ...msg,
+                        content: 'Moondream pipeline failed. Check backend logs and retry.'
+                      }
+                    : msg
+                )
               }
-            ])
+              return [
+                ...withoutTemp,
+                {
+                  id: aiId,
+                  role: 'assistant',
+                  content: 'Moondream pipeline failed. Check backend logs and retry.'
+                }
+              ]
+            })
           } finally {
             setIsThinking(false)
           }
@@ -451,9 +461,14 @@ function App() {
 
       ws.onopen = () => {
         setIsLiveTranscribing(true)
+        const newAudioId = `${Date.now()}-audio`
+        activeAudioIdRef.current = newAudioId
 
         // --- THE FIX: Inject a fresh message into the chat UI to hold the stream ---
-        setMessages((prev) => [...prev, { role: 'user', content: '🎧 **[Live System Audio]:** ' }])
+        setMessages((prev) => [
+          ...prev,
+          { id: newAudioId, role: 'user', content: `${LIVE_AUDIO_PREFIX} ` }
+        ])
 
         // Tell the Rust backend to start capturing OS audio!
         window.api.startLiveSystemCapture()
@@ -463,29 +478,49 @@ function App() {
         const data = JSON.parse(e.data)
         if (data.text) {
           setMessages((prev) => {
-            const newMessages = [...prev]
-            const lastIndex = newMessages.length - 1
+            const activeAudioId = activeAudioIdRef.current
 
-            // --- THE FIX: Check ONLY the very last message ---
-            // If the absolute last message is our active audio block, append to it.
-            if (
-              lastIndex >= 0 &&
-              newMessages[lastIndex].content?.includes('🎧 **[Live System Audio]:**')
-            ) {
-              newMessages[lastIndex] = {
-                ...newMessages[lastIndex],
-                content: newMessages[lastIndex].content + ' ' + data.text
-              }
-            } else {
-              // If the last message is an AI reply (or anything else),
-              // spawn a BRAND NEW audio block at the bottom of the chat!
-              newMessages.push({
-                role: 'user',
-                content: '🎧 **[Live System Audio]:** ' + data.text
-              })
+            // If there's no active audio target (sealed/new turn), always start a fresh bubble.
+            if (!activeAudioId) {
+              const newAudioMessageId = `${Date.now()}-audio`
+              activeAudioIdRef.current = newAudioMessageId
+              return [
+                ...prev,
+                {
+                  id: newAudioMessageId,
+                  role: 'user',
+                  content: `${LIVE_AUDIO_PREFIX} ${data.text}`
+                }
+              ]
             }
 
-            return newMessages
+            let foundById = false
+            const updatedById = prev.map((msg) => {
+              if (msg.id === activeAudioId) {
+                foundById = true
+                return {
+                  ...msg,
+                  content: msg.content + ' ' + data.text
+                }
+              }
+              return msg
+            })
+
+            if (foundById) {
+              return updatedById
+            }
+
+            // Active ID points to a message that no longer exists; recover by creating a new bubble.
+            const recoveredAudioId = `${Date.now()}-audio`
+            activeAudioIdRef.current = recoveredAudioId
+            return [
+              ...prev,
+              {
+                id: recoveredAudioId,
+                role: 'user',
+                content: `${LIVE_AUDIO_PREFIX} ${data.text}`
+              }
+            ]
           })
         }
       }
@@ -493,6 +528,7 @@ function App() {
       ws.onclose = () => {
         setIsLiveTranscribing(false)
         liveWsRef.current = null
+        activeAudioIdRef.current = null
         window.api.stopLiveSystemCapture()
       }
     }
@@ -535,6 +571,8 @@ function App() {
   }
 
   const handleContextualAction = async (actionType) => {
+    // Seal current audio block so subsequent speech starts a fresh bubble.
+    activeAudioIdRef.current = null
     const summaryContext = editableSummary.trim()
 
     // Grab the latest question for direct targeting
@@ -856,7 +894,8 @@ function App() {
       setIsThinking(false)
 
       // Inject a blank assistant message that we will actively type into
-      setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
+      const aiMessageId = `${Date.now()}-ai`
+      setMessages((prev) => [...prev, { id: aiMessageId, role: 'assistant', content: '' }])
 
       // Open the streaming pipeline
       const reader = res.body.getReader()
@@ -877,19 +916,9 @@ function App() {
         }
         charCount += textChunk.length // Track length for TPS calc
 
-        // --- THE FIX: Create a brand new message object ---
-        setMessages((prev) => {
-          const newMessages = [...prev]
-          const lastIndex = newMessages.length - 1
-
-          if (lastIndex >= 0) {
-            newMessages[lastIndex] = {
-              ...newMessages[lastIndex],
-              content: assistantReply
-            }
-          }
-          return newMessages
-        })
+        setMessages((prev) =>
+          prev.map((msg) => (msg.id === aiMessageId ? { ...msg, content: assistantReply } : msg))
+        )
 
         // Give Chromium a paint opportunity between streamed chunks in production builds.
         await new Promise((resolve) => requestAnimationFrame(resolve))
@@ -1494,7 +1523,8 @@ function App() {
       })
 
       setIsThinking(false)
-      setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
+      const aiMessageId = `${Date.now()}-ai`
+      setMessages((prev) => [...prev, { id: aiMessageId, role: 'assistant', content: '' }])
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder('utf-8')
@@ -1507,19 +1537,9 @@ function App() {
         const textChunk = decoder.decode(value, { stream: true })
         assistantReply += textChunk
 
-        // --- THE FIX: Create a brand new message object ---
-        setMessages((prev) => {
-          const newMessages = [...prev]
-          const lastIndex = newMessages.length - 1
-
-          if (lastIndex >= 0) {
-            newMessages[lastIndex] = {
-              ...newMessages[lastIndex],
-              content: assistantReply
-            }
-          }
-          return newMessages
-        })
+        setMessages((prev) =>
+          prev.map((msg) => (msg.id === aiMessageId ? { ...msg, content: assistantReply } : msg))
+        )
 
         // Give Chromium a paint opportunity between streamed chunks in production builds.
         await new Promise((resolve) => requestAnimationFrame(resolve))
