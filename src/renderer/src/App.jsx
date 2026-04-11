@@ -765,10 +765,10 @@ function App() {
             await handleContextualAction('quick_answer')
 
             // 2. Add a slight 500ms delay so the UI breathes before the next command
-            await new Promise((resolve) => setTimeout(resolve, 500))
+            // await new Promise((resolve) => setTimeout(resolve, 500))
 
             // 3. Automatically trigger Full Analysis right after!
-            await handleContextualAction('full_analysis')
+            // await handleContextualAction('full_analysis')
           }
         }
       })
@@ -1671,7 +1671,7 @@ function App() {
               <div
                 key={`message-${idx}`}
                 // className="w-full mb-4 p-5 bg-gray-900/95 text-gray-100 rounded-2xl shadow-2xl backdrop-blur-xl border border-gray-700 cursor-text"
-                className="w-full mb-4 p-5 bg-gray-900/60 text-gray-100 rounded-2xl shadow-2xl backdrop-blur-xl border border-gray-700 cursor-default"
+                className="w-full mb-4 p-5 bg-black/90 text-gray-100 rounded-2xl shadow-2xl backdrop-blur-xl border border-gray-700 cursor-default"
               >
                 {rawMermaid ? (
                   <div

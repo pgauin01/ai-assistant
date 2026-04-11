@@ -319,7 +319,8 @@ async def lifespan(app: FastAPI):
     print("[WARMUP] Pre-loading Whisper 'base.en' model to CUDA...")
     try:
         if whisper_model is None and WhisperModel is not None:
-            whisper_model = WhisperModel("base.en", device="cuda", compute_type="int8_float16")
+            # whisper_model = WhisperModel("base.en", device="cuda", compute_type="int8_float16")
+            whisper_model = WhisperModel("medium.en", device="cuda", compute_type="int8")
     except Exception as e:
         print(f"Failed to pre-load Whisper: {e}")
     
@@ -1416,7 +1417,7 @@ async def live_transcribe(websocket: WebSocket):
                 segments, _ = whisper_model.transcribe(
                     temp_path,
                     language="en",
-                    beam_size=5,
+                    beam_size=2,
                     vad_filter=True,
                     vad_parameters=dict(min_silence_duration_ms=300, speech_pad_ms=50),
                     condition_on_previous_text=False,
