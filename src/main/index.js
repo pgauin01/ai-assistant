@@ -503,6 +503,21 @@ app.whenReady().then(() => {
     }
   })
 
+  // Global scroll controls:
+  // Ctrl/Cmd + Shift + . => scroll up
+  // Ctrl/Cmd + Shift + / => scroll down
+  registerShortcut('CommandOrControl+Shift+.', () => {
+    if (mainWindow) {
+      mainWindow.webContents.send('scroll-action', 'up')
+    }
+  })
+
+  registerShortcut('CommandOrControl+Shift+/', () => {
+    if (mainWindow) {
+      mainWindow.webContents.send('scroll-action', 'down')
+    }
+  })
+
   registerShortcut('CommandOrControl+Q', () => {
     if (mainWindow) {
       mainWindow.show()

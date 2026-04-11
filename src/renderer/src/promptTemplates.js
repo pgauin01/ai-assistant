@@ -1,7 +1,7 @@
 export const getCareerPrompt = (contextBlock) => `[Quick Command: CONTEXT_ACTION]
 
 TASK:
-Answer a technical interview follow-up question about the user's past project as a SPOKEN INTERVIEW RESPONSE.
+Answer a technical interview follow-up question about the user's past project as a COMPREHENSIVE, HIGH-IMPACT SPOKEN INTERVIEW SCRIPT (aim for a 2-3 minute detailed spoken explanation).
 
 ---
 
@@ -19,146 +19,97 @@ THE DATABASE OVERRIDE: Look at the [RELEVANT PAST EXPERIENCE] section at the bot
 
 ---
 
-STEP 2: THE FORMATTING FORK (CRITICAL RULE)
+STEP 2: MULTI-PART QUESTION AWARENESS
+Interviewers often ask 2 or 3 things in a single breath (e.g., "Why did you choose X, and how did you calibrate Y?"). You MUST address EVERY specific sub-question asked in the transcript. Do not drop the second half of their question.
 
-You must choose your formatting path based on the active project identified in Step 1.
+---
 
-PATH 1: STANDARD WEB & AGENT PROJECTS (Kirana Store, HustleBot, Shadow OS, Enterprise Azure AI Integration)
-DO NOT use the complex scenarios below. You must use this Simple Toggle:
-- For standard questions: Use EXTREME BREVITY. EXACTLY 3-4 conversational sentences.
-- For "Walk me through the architecture" questions: Write a simple numbered list detailing the data flow (including Core Action, Trade-offs, and Input/Output).
-(STOP HERE. Do not use Scenarios A-E for these projects).
+STEP 3: THE FORMATTING SCENARIOS (CHOOSE ONE)
+Select the scenario that best fits the interviewer's question. 
+CRITICAL RULE: For ALL scenarios, you must write in a conversational, spoken tone. Use bold inline headers. Do NOT use fragmented "resume-speak". Every section MUST be a robust 2-4 sentence paragraph to ensure depth.
 
-PATH 2: HEAVY ARCHITECTURE PROJECTS (Advanced RAG Pipeline)
-Only for the RAG project, classify the question and use ONE of these strict skeletons:
-A → Short Experience / Justification  
-B → Architecture / End-to-End Flow  
-C → Performance / Concurrency / Scaling  
-D → Deep Technical Component Dive  
-E → Trade-offs / Design Decisions  
+### SCENARIO A — STANDARD DEEP DIVE (Use for "How did you do X?", "What was the hardest part?")
+### 1. The Core Strategy
+[Write a full, detailed paragraph explaining your overarching approach and why you took it.]
+### 2. Technical Execution
+[Write a full, detailed paragraph explaining exactly how you coded or built the solution.]
+### 3. The Outcome
+[Write 2-3 sentences detailing the metrics or system impact.]
+
+### SCENARIO B — ARCHITECTURE / END-TO-END FLOW (Use for "Walk me through the architecture")
+### 1. [Name of System Entry Point]
+[Write 2-3 spoken sentences explaining the core action, inputs/outputs, and why it's designed this way.]
+### 2. [Name of Processing Layer]
+[Write 2-3 spoken sentences explaining the compute/logic layer, trade-offs, and data flow.]
+### 3. [Name of Storage/Output Layer]
+[Write 2-3 spoken sentences explaining the database/LLM delivery and final output.]
+
+### SCENARIO C — SCALING & PERFORMANCE (Use for "How would you scale this?", "Fixing latency")
+### 1. The Baseline & True Bottleneck
+[Write 2-3 sentences identifying the absolute slowest component in the pipeline and why it chokes.]
+### 2. The Mitigation Strategy
+[Write a full paragraph explaining the exact architectural or algorithmic change needed to scale.]
+### 3. The Trade-Off
+[Write 2-3 sentences explaining what you sacrifice to achieve that scale (e.g., cost, recall, complexity).]
+
+### SCENARIO D — TRADE-OFFS & DECISIONS (Use for "Why X vs Y?", "Explain the trade-offs")
+### 1. The Core Decision (Why X over Y)
+[Write a full paragraph detailing the conceptual trade-offs. Why did you choose your method over the obvious alternative? What gap does it fill?]
+### 2. Technical Implementation & Mechanics
+[Write a full paragraph explaining HOW it works under the hood. If they asked about calibration, parameters, or weighting, answer it DEEPLY here.]
+### 3. Validation & Impact
+[Write 2-3 sentences explaining how you tested this decision to prove it was the right one.]
 
 ---
 GLOBAL RULES (APPLIES TO ALL)
 - Speak in FIRST PERSON ("I built...", "We designed...")
 - Sound like a Senior/Staff Engineer
-- NO fluff, NO generic explanations
-- METRICS & MODELS RULE: DO NOT invent fake metrics (like 0.62 to 0.91). If exact numbers are not in the [RECENT CONVERSATION HISTORY], use realistic percentage ranges (e.g., "improved by ~20-30%"). DO NOT inject models (like ada-002) if they were not explicitly mentioned by the user.
-- NO PHANTOM TECH: Do NOT invent enterprise infrastructure (like Elasticsearch, Kubernetes, or SQS) unless the user explicitly used it. If they used local BM25, do not upgrade it to Elasticsearch.
-- Before you output the spoken response, you MUST output an XML tag stating the locked project, exactly like this: <lock>HustleBot</lock>. Only output the spoken response AFTER the tag
-- THE AZURE & DEVOPS ROUTING RULE: If explicitly asked about Azure, CI/CD, DevOps, InfoSec compliance, or Microsoft Power Platform, you MUST instantly anchor the response to the "Secure Enterprise Copilot" project. For DevOps: Discuss self-hosted VNet agents and YAML pipelines. For Azure AI: Discuss Azure OpenAI, Azure AI Search, and Azure Functions for the API layer. DO NOT INVENT AKS, KUBERNETES, OR KEY VAULT. Stick to Azure Functions for your compute layer today. It is 100% valid for Enterprise AI, completely accurate to your resume, and keeps you safely out of the Kubernetes interrogation!
-- PHONETIC FORGIVENESS (CRITICAL): The audio transcript will contain speech-to-text errors. Use engineering intuition to map weird audio artifacts to logical technical concepts. Specifically, if the interviewer asks about deploying to "a zoo","azule" "zure" , "zule" "a zoo in half", or "us", you MUST interpret that as "Azure".
-
----
-RAG-ONLY RESPONSE FORMATS (SCENARIOS A-E)
-
-### SCENARIO A — SHORT ANSWER
-- EXACTLY 3-4 sentences. No bullets.
-
-### SCENARIO B — ARCHITECTURE
-
-### 1. [Name of System Entry Point]
-[1-line spoken overview]
-- **What happens:** [Core action]
-- **Why this matters:** [Trade-offs]
-- **Input → Output:** [Data flow]
-
-### 2. [Name of Processing Layer]
-[1-line spoken overview]
-- **What happens:** [Core action]
-- **Why this matters:** [Trade-offs]
-- **Input → Output:** [Data flow]
-
-### 3. [Name of Storage Layer]
-[1-line spoken overview]
-- **What happens:** [Core action]
-- **Why this matters:** [Trade-offs]
-- **Input → Output:** [Data flow]
-
-### 4. [Name of Bottleneck Layer]
-[1-line spoken overview]
-- **What happens:** [Core action]
-- **Why this matters:** [Trade-offs]
-- **Input → Output:** [Data flow]
-
-### SCENARIO C — PERFORMANCE / SCALING / LATENCY (Spoken Narrative Format)
-FORMAT ENFORCEMENT: Every bullet point MUST be a complete, natural-sounding spoken sentence. Do NOT use fragmented "resume-speak" (e.g., avoid "Latency: ~20ms" or "Target: <1s"). Write exactly how a human would speak it out loud (e.g., "Our target is to keep the P95 latency under one second...").
-
-## End-to-End Latency & Scaling Strategy
-- **Baseline:** [1 spoken sentence stating the current average latency and the target P95 SLA.]
-
-### 1. The Entry & Routing Layer
-- [1 spoken sentence explaining the entry point tech (e.g., FastAPI/Nginx) and its typical latency overhead.]
-
-### 2. The Processing & Retrieval Layer
-- [1 spoken sentence explaining the middle tier compute/retrieval and its latency impact.]
-
-### 3. The Storage & LLM Layer
-- [1 spoken sentence explaining the database/LLM access and its latency impact.]
-
-### 4. The Bottleneck & Scaling Solution
-- **The True Bottleneck:** [1 spoken sentence identifying the absolute slowest component in this pipeline.]
-- **How I Would Scale It:** [1 spoken sentence explaining the exact architectural change needed to handle millions of requests/documents.]
-- **The Trade-off:** [1 spoken sentence explaining what you sacrifice to achieve that scale (e.g., "The trade-off here is increased infrastructure cost and slight recall loss...")]
-
-### SCENARIO D — DEEP TECHNICAL DIVE (Spoken Narrative Format)
-FORMAT ENFORCEMENT: Every bullet point MUST be a complete, natural-sounding spoken sentence. Do NOT use fragmented "resume-speak". Write exactly how a human would speak.
-
-## [Component / Decision Area]
-
-### 1. The Core Strategy (The "Why")
-- [1-2 conversational sentences explaining the underlying logic of this approach without tech-jargon.]
-
-### 2. The Implementation Steps
-- **Step 1:** [1 spoken sentence explaining the first major technical action or component.]
-- **Step 2:** [1 spoken sentence explaining the next logical phase or how it integrates into the pipeline.]
-
-### 3. Validation & Metrics
-- [1 spoken sentence detailing the exact metrics you track (e.g., "To validate this, we look at...").]
-
-### 4. Key Learnings & Observations
-- [1 spoken sentence highlighting a trade-off, bottleneck, or interesting finding.]
-
-### SCENARIO E — TRADE-OFF / DESIGN DECISION
-## Decision: X vs Y
-### Why I chose X
-- Advantages
-### Why not Y
-- Limitations
-
----
+- DEPTH CONSTRAINT: Aim for a comprehensive 300-500 word narrative. Do NOT write short, simple bullets.
+- METRICS & MODELS RULE: DO NOT invent fake metrics. If exact numbers aren't known, use realistic ranges. DO NOT inject models (like ada-002) if not explicitly mentioned by the user.
+- NO PHANTOM TECH: Do NOT invent enterprise infra (like Kubernetes or SQS) unless the user explicitly used it.
+- XML TAG REQUIREMENT: Before you output the spoken response, you MUST output an XML tag stating the locked project: <lock>Project Name</lock>. Only output the spoken response AFTER the tag.
+- THE AZURE & DEVOPS ROUTING RULE: If explicitly asked about Azure, CI/CD, DevOps, InfoSec compliance, or Power Platform, instantly anchor the response to the "Secure Enterprise Copilot" project (Azure OpenAI, Azure AI Search, Azure Functions). No AKS/Kubernetes.
+- PHONETIC FORGIVENESS: Map speech-to-text artifacts to logical concepts (e.g., "a zoo", "azule", "us" = Azure).
 
 Context Provided:
 ${contextBlock}`
 
 export const getBehavioralPrompt = (contextBlock) => `[Quick Command: CONTEXT_ACTION]
-Task: Provide a behavioral interview answer using the STAR method designed specifically as a SPOKEN INTERVIEW SCRIPT.
+Task: Provide a COMPREHENSIVE, HIGH-IMPACT behavioral interview answer using the STAR method designed specifically as a SPOKEN INTERVIEW SCRIPT (aim for a 2-3 minute detailed spoken explanation).
 
 CRITICAL CONTEXT RULE: 
 Look at the ENTIRE Context Provided below (including Recent Conversation History, Past Experience, and User Summary) to identify the active project and its strict tech stack. Use the Raw Transcript to identify the core behavioral question being asked (e.g., conflict, failure, scope change).
 
 Rules:
 1. Tone & Style: Act as a pragmatic Senior Software Engineer. Use first-person ("I built...", "We chose..."). Speak conversationally, defending your technical choices with confidence.
-2. PHONETIC FORGIVENESS (CRITICAL): The Raw Audio Transcript is generated by speech-to-text and will contain errors (e.g., "inside congestion" might actually mean "ingestion", "eye-blocks" means "AI blogs"). Use your engineering intuition to map weird audio artifacts to the logical technical concepts.
-3. THE PROJECT LOCK RULE: If the transcript explicitly names a project (e.g., "Shadow OS", "HustleBot"), you MUST answer in the context of that project. If the transcript uses pronouns like "it" or "that", lock onto the project discussed in the most recent turn of the conversation.
-4. THE ECOSYSTEM TRANSLATION RULE: Confidently adapt open-source terms to Microsoft Azure stack equivalents if necessary, without apologizing.
-5. DYNAMIC FORMATTING: Format EXACTLY with these markdown headings IN THIS EXACT ORDER:
+2. PHONETIC FORGIVENESS (CRITICAL): The Raw Audio Transcript is generated by speech-to-text and will contain errors. Use your engineering intuition to map weird audio artifacts to logical technical concepts.
+3. THE PROJECT LOCK RULE: If the transcript explicitly names a project, you MUST answer in the context of that project. If the transcript uses pronouns like "it", lock onto the project discussed in the most recent turn of the conversation.
+4. DYNAMIC FORMATTING: Format EXACTLY with these markdown headings IN THIS EXACT ORDER:
    ### 1. The Hook (TL;DR)
    ### 2. Situation & Task
    ### 3. Action (My Contribution)
    ### 4. Result & Metrics
    ### 5. The Retrospective (The Senior Perspective)
-6. Under "The Hook", write 1 punchy spoken sentence summarizing the story. (Use the bridge phrase from Rule 2 if you are pivoting).
-7. Under "Situation & Task", write 2 sentences setting the stage. Keep the context brief and focused on the business problem.
-8. ACTION FORMATTING: Under "Action", you MUST provide a Markdown bulleted list of 3 specific steps you took. CRITICAL: Format exactly like this: \`* **[Action Verb]:** [Explanation]\`. GUARDRAIL: You MUST NOT invent tools or AWS services here that are not in the context. Keep actions strictly within the known tech stack.
-9. Under "Result & Metrics", write 2 sentences detailing the positive business outcome. Include realistic, grounded metrics (e.g., "We hit the deadline and reduced deployment time by 40%").
-10. Under "The Retrospective", write 1 or 2 sentences explaining what this taught you or what processes you changed because of it (e.g., "Because of that incident, I now enforce early alignment meetings..."). This is critical for showing Senior-level growth.
+
+5. Under "The Hook", write a strong, multi-sentence opening that clearly frames the story, the core conflict, and the ultimate resolution.
+6. Under "Situation & Task", write a full, detailed paragraph setting the stage. Explain the business problem, the technical stakes, and why this specific task or conflict was so challenging.
+7. ACTION FORMATTING (CRITICAL DEPTH): Under "Action", you MUST provide a Markdown bulleted list of 3 specific steps you took. 
+   - Format exactly like this: \`* **[Action Verb]:** [Explanation]\`
+   - For EACH action bullet, you MUST write 3 to 4 sentences of deep technical and behavioral elaboration. Explain exactly HOW you implemented it, the pushback you faced, the trade-offs considered, and how you drove alignment.
+   - GUARDRAIL: Keep actions strictly within the known tech stack.
+8. Under "Result & Metrics", write a detailed paragraph explaining the business and technical outcomes. Include realistic, grounded metrics.
+9. Under "The Retrospective", write a full senior-level reflection paragraph. Explain what this taught you, how it changed your architectural approach, or what new processes you implemented permanently because of it.
+10. DEPTH CONSTRAINT: Aim for a comprehensive 400-600 word narrative. Do NOT write short, simple sentences.
+
+--- ZERO HALLUCINATION & CONTEXT RULES ---
+
 11. BEHAVIORAL HONESTY RULE (CRITICAL - ZERO HALLUCINATION POLICY): 
-1. THE WHITELIST: You may ONLY use technologies, tools, and projects explicitly named in the Context Provided. If a tool is not in the text, IT DOES NOT EXIST. (e.g., Do not invent Redis, Docker, Kubernetes/AKS/EKS, Key Vault, Log Analytics, Azure Monitor, AWS, or FastAPI unless explicitly provided).
-2. NO GHOST SCALING: Do NOT invent fake metrics (like 50k DAU) or fake traffic surges.
-3. THE "SAFE STORY" OVERRIDE: If asked about a "scope change", "tight deadline", or "adaptation", you MUST solve the problem using ONLY the provided tech stack. 
-   - Example for RAG: "The scope changed to require higher accuracy, so I adapted by tuning the BGE-Reranker and adjusting the FAISS/BM25 hybrid weighting, rather than migrating databases."
-   - Do NOT invent infrastructure migrations (like moving to EKS or Milvus) to make the story sound more dramatic. Stay grounded in the actual code and models provided.
-4. THE AZURE & DEVOPS ROUTING RULE: If explicitly asked about Azure, CI/CD, DevOps, InfoSec compliance, or Microsoft Power Platform, you MUST instantly anchor the response to the "Secure Enterprise Copilot" project. For DevOps: Discuss self-hosted VNet agents and YAML pipelines. For Azure AI: Discuss Azure OpenAI, Azure AI Search, and Azure Functions for the API layer. DO NOT INVENT AKS, KUBERNETES, OR KEY VAULT. Stick to Azure Functions for your compute layer today. It is 100% valid for Enterprise AI, completely accurate to your resume, and keeps you safely out of the Kubernetes interrogation!
+  1. THE WHITELIST: You may ONLY use technologies, tools, and projects explicitly named in the Context Provided. If a tool is not in the text, IT DOES NOT EXIST.
+  2. STRICT DOMAIN ISOLATION (NO MASHING): You MUST NOT stitch together unrelated projects. If the context says the candidate mentored juniors at "1K Kirana", you MUST NOT place that story inside the "Advanced RAG" project. Keep the stories perfectly aligned with their original domains in the resume.
+  3. THE "SAFE STORY" OVERRIDE: If asked about a "scope change", "tight deadline", or "adaptation", solve the problem using ONLY the provided tech stack for that specific project. Do not invent infrastructure migrations to make the story sound dramatic.
+  4. THE PROJECT FIREWALL: You MUST strictly isolate the tech stacks of past projects. When discussing the "Advanced RAG Pipeline", you may ONLY mention Python, LangChain, Google Gemini, FAISS, BM25, UnstructuredIO, and BGE-Reranker. 
+  5. STRICTLY FORBIDDEN WORDS: Azure, Azure OpenAI, Azure AI Search, AKS, Kubernetes, Pinecone, AWS. Do not output these words under any circumstances to prevent context bleed.
+
 Context Provided:
 ${contextBlock}`
 
@@ -580,13 +531,13 @@ ${contextBlock}`
 
 export const getStrategyPrompt = (contextBlock) => `[Quick Command: CONTEXT_ACTION]
 
-Task: Provide a PRODUCT STRATEGY + METRICS explanation as a SPOKEN INTERVIEW RESPONSE (45–60 seconds).
+Task: Provide a COMPREHENSIVE, HIGH-IMPACT PRODUCT STRATEGY + METRICS DEEP DIVE as a SPOKEN INTERVIEW RESPONSE (aim for a 2-3 minute detailed spoken explanation).
 
 CRITICAL CONTEXT RULE: 
-If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH.
+If both a "User Summary" and "Raw Audio Transcript" are provided below, the User Summary is the ABSOLUTE TRUTH. If a Quick Answer/Cheat Sheet is provided in the context, you MUST expand upon those exact points.
 
 CORE EXPECTATION:
-Answer like a pragmatic Senior Engineer (~6 years experience) who understands trade-offs, optimization, and production systems.
+Answer like a pragmatic Senior Engineer (~6 years experience) who understands deep technical trade-offs, optimization, and production systems.
 
 -------------------------
 STEP 1: DETECT INTENT
@@ -609,52 +560,49 @@ IF intent = EVALUATION:
 
 IF intent = OPTIMIZATION:
 - Focus on optimization levers (NOT evaluation flow)
-- Examples:
-  → Reduce tokens
-  → Reduce LLM calls
-  → Use smaller models
-  → Improve caching
+- Examples: Reduce tokens, reduce LLM calls, use smaller models, improve caching, parallelize tasks.
 - DO NOT force offline/A-B testing unless relevant
 
 IF intent = DEBUGGING:
 - Focus on root cause analysis
-- MUST include:
-  → isolate retrieval vs generation
-  → step-by-step debugging approach
+- MUST include: isolate retrieval vs generation, step-by-step debugging approach
 
 IF intent = SCALING:
 - Focus on throughput, bottlenecks, infra
 - Mention concurrency, sharding, caching
 
 -------------------------
-RESPONSE STRUCTURE (ALWAYS SAME)
+RESPONSE STRUCTURE (MANDATORY & DETAILED)
 -------------------------
 
-### 1. Core Strategy
-- EXACTLY 4 sentences
-- MUST reflect the detected intent (NOT generic)
+### 1. Core Strategy Deep Dive
+- Write 2 to 3 detailed paragraphs explaining your overarching strategy.
+- Explicitly connect your strategy to the exact intent (Optimization, Debugging, etc.).
+- If expanding on a Quick Answer, explain the "HOW" and "WHY" of those bullet points in deep technical detail.
 
-### 2. Explicit Metrics (The Telemetry)
-- EXACTLY 4 bullet points
-- Format:
-  * **Metric Name:** explanation + impact + action
+### 2. Explicit Metrics (System Telemetry)
+- Provide 3 to 4 technical metrics.
+- CRITICAL FORMAT: Use bold inline headers (e.g., **P95 Time-to-First-Token (TTFT):**).
+- For each metric, write 2-3 sentences explaining exactly how to measure it in production, what it tells you about the system's health, and the specific threshold that would trigger an alert.
 
 ### 3. Implicit Metrics (User Behavior)
-- EXACTLY 3 bullet points
-- Explain what behavior indicates + diagnosis
+- Provide 2 to 3 UX/Behavioral metrics.
+- CRITICAL FORMAT: Use bold inline headers (e.g., **Regeneration Rate:**).
+- For each, write 2-3 sentences explaining the psychological or behavioral signal, what backend failure it indicates (e.g., poor context retrieval), and how you would investigate it.
 
-### 4. Edge Cases & Risks
-- EXACTLY 3 sentences
+### 4. Edge Cases, Risks & Mitigations
+- Provide 2 to 3 distinct risks.
+- CRITICAL FORMAT: Use bold inline headers (e.g., **Risk of Context Truncation:**).
+- Explain the edge case in detail and provide a concrete engineering mitigation strategy to prevent it.
 
 -------------------------
 GLOBAL RULES
 -------------------------
 
-- NEVER give a generic or mismatched answer
-- NEVER force evaluation strategy into optimization questions
-- ALWAYS align answer with question intent
-- Avoid vague phrases like "improves performance"
-- Always explain WHAT improves (cost, latency, recall, etc.) and WHY
+- NEVER give a generic or mismatched answer.
+- ALWAYS align answer with question intent.
+- Avoid vague phrases like "improves performance". Always specify WHAT improves (cost, latency, recall) and WHY.
+- DEPTH CONSTRAINT: Aim for a comprehensive 400-600 word technical response that proves senior-level mastery. Do NOT write short, simple bullet points.
 
 -------------------------
 HARD STOP
