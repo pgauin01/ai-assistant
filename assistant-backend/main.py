@@ -1233,32 +1233,31 @@ async def confirm_and_execute(data: dict):
             yield "No command provided"
         return StreamingResponse(stream_err(), media_type="text/plain")
 
-    # --- MANUAL OVERRIDE CHECK (Slash Commands) ---
+    # --- MANUAL OVERRIDE CHECK (Slash Commands anywhere in text) ---
     command_lower = command.lower()
     
-    if command_lower.startswith("/c"):
+    if "/c" in command_lower:
         mode = "create"
-        command = command[2:].strip()
+        command = re.sub(r'(?i)/c\b', '', command).strip()
         print("[OVERRIDE] User manually forced CREATE mode.")
         
-    elif command_lower.startswith("/m"):
+    elif "/m" in command_lower:
         mode = "mcq"
-        command = command[2:].strip()
+        command = re.sub(r'(?i)/m\b', '', command).strip()
         print("[OVERRIDE] User manually forced MCQ mode.")
         
-    elif command_lower.startswith("/f"):
+    elif "/f" in command_lower or "/fix" in command_lower:
         mode = "fix"
-        command = command[2:].strip()
+        command = re.sub(r'(?i)/f(ix)?\b', '', command).strip()
         print("[OVERRIDE] User manually forced FIX mode.")
         
-    elif command_lower.startswith("/e"):
+    elif "/e" in command_lower or "/exp" in command_lower or "/explain" in command_lower:
         mode = "explain"
-        command = command[2:].strip()
+        command = re.sub(r'(?i)/e(xp(lain)?)?\b', '', command).strip()
         print("[OVERRIDE] User manually forced EXPLAIN mode.")
         
     elif mode == "smart" or not mode:
         # --- DEFAULT FALLBACK ---
-        # If no slash command is used and no explicit mode is passed, default to CREATE!
         mode = "create"
         print("[DEFAULT] No slash command found. Auto-routing to CREATE mode.")
 
@@ -1272,7 +1271,6 @@ async def confirm_and_execute(data: dict):
     
     print(f"Routing to {mode.upper()} prompt with command:\n{command}")
     
-    # Safely get the prompt template and format it securely
     prompt_template, temperature = mode_router.get(mode, mode_router["create"])
     prompt = prompt_template.format(command=command)
 

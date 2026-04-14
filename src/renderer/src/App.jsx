@@ -1566,6 +1566,8 @@ function App() {
     // show user message
     setMessages((prev) => [...prev, { role: 'user', content: `✅ ${pendingCommand}` }])
 
+    console.log('Confirming vision command with backend:', pendingCommand, 'Mode:', visionMode)
+
     try {
       const res = await fetchBackend('/agent/confirm', {
         method: 'POST',
