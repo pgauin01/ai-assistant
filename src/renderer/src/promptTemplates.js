@@ -9,6 +9,7 @@ const FIREWALL_OVERRIDES = `FIREWALL OVERRIDES (CRITICAL):
 const EXTERNAL_TECH = `EXTERNAL TECH: Claude/GPT long context = Prompt Caching & KV Cache. IDEs/Cursor = FIM, AST, LSP. Agents = MCP, State Dictionaries, HITL.`
 const OCR_FIXER = `OCR FIXER: If input code is extracted via Vision OCR, it contains typos (e.g., 'Arrav'->'Array', 'f'->'{', commas as apostrophes). Silently fix ALL syntax typos before analyzing or completing the code.`
 const QA_ALIGN = `QA ALIGNMENT (CRITICAL): Look at the Context Provided. You MUST perfectly align with and expand on the 'My Previous Answer' Quick Answer bullets. DO NOT contradict them or invent new approaches.`
+const ANTI_HALLUCINATION = `ANTI-HALLUCINATION (CRITICAL): Answer the EXACT technical question in the transcript. DO NOT output career summaries, RAG pipelines, or past projects unprompted.`
 
 export const getCareerPrompt = (contextBlock, role = DEFAULT_ROLE) => `[CMD: CAREER]
 TASK: 2-3 min comprehensive spoken interview script. Role: ${role}.
@@ -66,6 +67,7 @@ ${STT_FIXES}
 ${FIREWALL}
 ${FIREWALL_OVERRIDES}
 ${EXTERNAL_TECH}
+${ANTI_HALLUCINATION}
 
 Context:
 ${contextBlock}`
@@ -115,6 +117,7 @@ RULES: Stop after Section 5. Suggest simpler alternatives for early scaling.
 ${STT_FIXES}
 ${FIREWALL}
 ${QA_ALIGN}
+${ANTI_HALLUCINATION}
 
 Context:
 ${contextBlock}`
@@ -124,17 +127,19 @@ TASK: Coding solution as spoken response. Role: Pragmatic ${role}.
 
 FORMAT EXACTLY:
 ### 1. Optimal Approach Strategy
-[1-2 paragraphs explaining the absolute best DSA approach. Why is this the best choice?]
+[1-2 paragraphs explaining the approach. If it's a concept (e.g. bind/call/apply), explain how it works under the hood.]
 ### 2. Detailed Complexity Analysis
-[**Time Complexity:** O(...) | **Space Complexity:** O(...). Detail where time/memory is spent. Exclude network latency.]
+[**Time Complexity:** O(...) | **Space Complexity:** O(...). Detail where time/memory is spent. Exclude network latency. If N/A, explain why.]
 ### 3. Code Implementation
-[LANGUAGE LOCK: Default to JavaScript/TypeScript. ONLY use Python if explicitly requested or if it's a heavy AI/Data Science question. Include essential imports, inline comments, early exits.]
+[LANGUAGE LOCK: Default to JavaScript/TypeScript. ONLY use Python if explicitly requested or if it's an AI/Data Science question. Include clean, readable code demonstrating the solution or concept.]
 ### 4. Step-by-Step Code Walkthrough
 [Line-by-line spoken explanation. Include short dry run.]
 
-RULES: DO NOT output career summaries or past projects here. Follow-up mode: 2 short paragraphs only (no code).
+RULES: Answer the EXACT technical question asked. DO NOT output career summaries or past projects.
 ${OCR_FIXER}
 ${STT_FIXES}
+${QA_ALIGN}
+${ANTI_HALLUCINATION}
 ${FALLBACK}
 
 Context:
@@ -158,6 +163,7 @@ ${STT_FIXES}
 ${FALLBACK}
 ${EXTERNAL_TECH}
 ${QA_ALIGN}
+${ANTI_HALLUCINATION}
 
 Context:
 ${contextBlock}`

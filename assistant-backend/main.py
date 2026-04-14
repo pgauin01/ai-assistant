@@ -1,4 +1,4 @@
-﻿from typing import Literal
+﻿from typing import Literal,Optional
 import os
 import tempfile
 import warnings
@@ -386,6 +386,7 @@ class UserCommand(BaseModel):
     messages: list[ConversationMessage] = Field(default_factory=list)
     tech_stack: str = ""
     model_name: str = "qwen2.5-coder:3b"
+    action: Optional[str] = "chat"
 
 
 class Message(BaseModel):
@@ -498,33 +499,22 @@ async def execute_command(command: UserCommand):
 
     user_text_lower = command.text.lower()
     
-    career_triggers = [
-        "experience", "resume", "project", "portfolio", "interview", 
-        "hustle bot", "hustlebot", "shadow os", "kirana", "challenge faced",
-        "ragchatbot", "college project"
-    ]
+    # 1. 🚨 GET THE ACTION FROM REACT 🚨
+    incoming_action = command.action
     
-    # 1. Check if the user explicitly clicked the Career button
-    is_explicit_career = "[Quick Command: CAREER]" in command.text
+    # 2. Determine if we need to search the FAISS Vector Database
+    needs_rag = incoming_action in ["career", "behavioral", "full_analysis"]
     
-    # 2. Check if a DIFFERENT lifeline button was clicked (Coding, Design, etc.)
-    is_other_command = "[Quick Command:" in command.text and not is_explicit_career
-    
-    # 3. Only use the keyword triggers if NO other command is currently active
-    is_career_question = is_explicit_career or (
-        not is_other_command and any(kw in user_text_lower for kw in career_triggers)
-    )
+    # Fallback for standard typing in the chatbox
+    career_triggers = ["experience", "resume", "project", "portfolio", "interview", "hustlebot", "shadow os", "kirana", "ragchatbot"]
+    if incoming_action == "chat" and any(kw in user_text_lower for kw in career_triggers):
+        needs_rag = True
 
     context = ""
     question = command.text
 
-    # --- CAREER ROUTE HANDLING ---
-    if is_career_question:
-        if "Question:\n\n" in command.text:
-            question = command.text.split("Question:\n\n")[-1].strip()
-        else:
-            question = command.text.replace("[Quick Command: CAREER]", "").strip()
-
+    # --- FAISS / CAREER ROUTE HANDLING ---
+    if needs_rag:
         try:
             if "shadow os" in user_text_lower:
                 context = read_career_markdown("shadow_os.md")
@@ -534,60 +524,49 @@ async def execute_command(command: UserCommand):
                 context = read_career_markdown("1k_kirana_store.md")
             elif any(kw in user_text_lower for kw in ["rag", "ragchatbot", "college"]):
                 context = read_career_markdown("RAG_Chatbot.md")
-
-            if context:
-                print("MACRO TRIGGERED: Loaded specific file. Passing to LLM for spoken summary.")
-                # Return macro as a quick stream chunk
-                # async def stream_macro():
-                #     yield context
-                # return StreamingResponse(stream_macro(), media_type="text/plain")
-                
             else:
                 if not career_retriever:
-                    async def stream_error():
-                        yield "**SYSTEM ALERT:** My career database is offline."
+                    async def stream_error(): yield "**SYSTEM ALERT:** My career database is offline."
                     return StreamingResponse(stream_error(), media_type="text/plain")
 
                 docs = career_retriever.invoke(question)
                 context_chunks = [f"PROJECT: {doc.metadata.get('Project', 'Resume Data')}\n{doc.page_content}" for doc in docs]
                 context = "\n\n".join(context_chunks)
         except Exception as file_error:
-            async def stream_err():
-                yield f"Missing career data file. Looked in: {CAREER_DATA_DIR}"
+            async def stream_err(): yield f"Missing career data file. Looked in: {CAREER_DATA_DIR}"
             return StreamingResponse(stream_err(), media_type="text/plain")
 
-    # --- MESSAGE ASSEMBLY & REMINDER INJECTION ---
+    # --- MESSAGE ASSEMBLY & GHOST CONTEXT FIX ---
     formatted_messages = []
     
-    if is_career_question:
+    if needs_rag:
+        # It's a Career question, so inject the FAISS context!
         system_prompt = CAREER_AGENT_PROMPT.format(context=context).strip()
-        
-        # --- THE FIX: Updated reminder for the perfect Elevator Pitch ---
-        # reminder = "\n\n[CRITICAL REMINDER: Generate a 3-sentence 'Elevator Pitch' summary of this project. Speak in the first-person ('I built...'). Focus on the problem, the tech stack, and the result. NO preambles, NO greetings, NO markdown tables. Be conversational.]"
-        # --- THE FIX: Expanded reminder to force Tech Stack and Challenges ---
-        reminder = "\n\n[CRITICAL REMINDER: Generate a conversational, 6-sentence spoken summary of this project. Speak in the first-person ('I built...'). You MUST explicitly mention the core tools/tech stack used, the primary technical challenge overcome (like hallucinations or data scraping), and the final result. NO preambles, NO greetings, NO bullet points, NO markdown formatting. Write it exactly as a human would speak it out loud.]"
         formatted_messages.append(SystemMessage(content=system_prompt))
+        formatted_messages.append(HumanMessage(content=question))
         
-        # --- THE FIX: Actually append the reminder to the question! ---
-        formatted_messages.append(HumanMessage(content=question + reminder))
     else:
-        # Format the prompt dynamically using the payload from React
-        # Fallback to a generic string just in case the frontend sends an empty value
-        safe_stack = command.tech_stack if command.tech_stack else "Standard Web Development Stack"
-        system_prompt = FAST_CODING_PROMPT.format(tech_stack=safe_stack)
+        # 🚨 THE GHOST CONTEXT FIX 🚨
+        # If the action is coding, concept, or strategy, React has ALREADY created a perfect prompt.
+        # We MUST bypass the Python FAST_CODING_PROMPT so we don't accidentally inject the Advanced RAG tech_stack!
         
-        reminder = "\n\n[CRITICAL REMINDER: Output ONLY the requested code. No fluff. If the request is a recipe, writing, or unrelated to software engineering, you MUST reply EXACTLY with 'Out of scope.' Do NOT output JSON for non-tech requests.]"
-        
-        formatted_messages.append(SystemMessage(content=system_prompt))
-        
-        # Add historical messages (excluding the last one)
+        if incoming_action in ["coding", "concept", "strategy", "quick_answer", "system_design"]:
+            system_prompt = "You are an elite interview assistant. Follow the user's prompt instructions strictly."
+            formatted_messages.append(SystemMessage(content=system_prompt))
+        else:
+            # Fallback for standard typing in the chatbox
+            safe_stack = command.tech_stack if command.tech_stack else "Standard Web Development Stack"
+            system_prompt = FAST_CODING_PROMPT.format(tech_stack=safe_stack)
+            formatted_messages.append(SystemMessage(content=system_prompt))
+            
+        # Add historical messages from React
         for msg in command.messages[:-1]:
             if msg.role == "user":
                 formatted_messages.append(HumanMessage(content=msg.content))
             elif msg.role == "assistant":
                 formatted_messages.append(AIMessage(content=msg.content))
                 
-        # Inject reminder into the final user message
+        # Add the final user prompt
         if command.messages:
             last_user_text = command.messages[-1].content
             formatted_messages.append(HumanMessage(content=last_user_text))
@@ -1246,7 +1225,7 @@ async def execute_vision_command(request: ChatRequest):
 
 @app.post("/agent/confirm")
 async def confirm_and_execute(data: dict):
-    command = data.get("command", "")
+    command = data.get("command", "").strip()
     mode = data.get("mode", "").lower()
 
     if not command:
@@ -1254,60 +1233,36 @@ async def confirm_and_execute(data: dict):
             yield "No command provided"
         return StreamingResponse(stream_err(), media_type="text/plain")
 
-    # --- MANUAL OVERRIDE CHECK ---
-    # If the user explicitly typed /fix or /exp in the UI edit box, bypass the smart router.
-    import re
+    # --- MANUAL OVERRIDE CHECK (Slash Commands) ---
     command_lower = command.lower()
     
-    if "/fix" in command_lower:
+    if command_lower.startswith("/c"):
+        mode = "create"
+        command = command[2:].strip()
+        print("[OVERRIDE] User manually forced CREATE mode.")
+        
+    elif command_lower.startswith("/m"):
+        mode = "mcq"
+        command = command[2:].strip()
+        print("[OVERRIDE] User manually forced MCQ mode.")
+        
+    elif command_lower.startswith("/f"):
         mode = "fix"
-        # Strip the command out so it doesn't pollute the LLM prompt
-        command = re.sub(r'(?i)/fix', '', command).strip()
+        command = command[2:].strip()
         print("[OVERRIDE] User manually forced FIX mode.")
         
-    elif "/exp" in command_lower or "/explain" in command_lower:
+    elif command_lower.startswith("/e"):
         mode = "explain"
-        command = re.sub(r'(?i)/explain', '', command)
-        command = re.sub(r'(?i)/exp', '', command).strip()
+        command = command[2:].strip()
         print("[OVERRIDE] User manually forced EXPLAIN mode.")
-
-    elif "/create" in command_lower:
+        
+    elif mode == "smart" or not mode:
+        # --- DEFAULT FALLBACK ---
+        # If no slash command is used and no explicit mode is passed, default to CREATE!
         mode = "create"
-        command = re.sub(r'(?i)/create', '', command).strip()
-        print("[OVERRIDE] User manually forced CREATE mode.")
+        print("[DEFAULT] No slash command found. Auto-routing to CREATE mode.")
 
-    # --- AGENTIC ROUTER: Step 1 (Classification) ---
-    # This will now ONLY run if the user didn't type a manual override command!
-    if mode == "smart":
-        print("[SMART] Running pre-classification...")
-        classify_prompt = VISION_CLASSIFY_PROMPT.format(command=command)
-        try:
-            class_res = requests.post(
-                f"{OLLAMA_BASE_URL}/api/generate",
-                json={
-                    "model": OLLAMA_MODEL,
-                    "prompt": classify_prompt,
-                    "stream": False,
-                    "options": {
-                        "temperature": 0.0, 
-                        "num_predict": 10 
-                    }
-                }
-            )
-            detected_mode = class_res.json().get("response", "").strip().lower()
-            
-            if "create" in detected_mode: mode = "create"
-            elif "fix" in detected_mode: mode = "fix"
-            elif "mcq" in detected_mode: mode = "mcq"
-            else: mode = "explain" 
-            
-            print(f"[SMART] Classified as: {mode.upper()}")
-            
-        except Exception as e:
-            print(f"[SMART] Classification failed: {e}. Falling back to explain.")
-            mode = "explain"
-
-    # --- AGENTIC ROUTER: Step 2 (Execution Mapping) ---
+    # --- AGENTIC ROUTER (Execution Mapping) ---
     mode_router = {
         "explain": (VISION_EXPLAIN_PROMPT, 0.3),
         "fix": (VISION_FIX_PROMPT, 0.1),
@@ -1315,7 +1270,10 @@ async def confirm_and_execute(data: dict):
         "mcq": (VISION_MCQ_PROMPT, 0.1),
     }
     
-    prompt_template, temperature = mode_router.get(mode, mode_router["explain"])
+    print(f"Routing to {mode.upper()} prompt with command:\n{command}")
+    
+    # Safely get the prompt template and format it securely
+    prompt_template, temperature = mode_router.get(mode, mode_router["create"])
     prompt = prompt_template.format(command=command)
 
     def generate_response():

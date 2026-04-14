@@ -931,7 +931,8 @@ function App() {
           text: payloadText,
           messages: rollingContextMessages,
           tech_stack: techStack,
-          model_name: selectedModel
+          model_name: selectedModel,
+          action: actionType
         })
       })
 
