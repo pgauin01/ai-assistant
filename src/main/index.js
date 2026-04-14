@@ -264,7 +264,7 @@ ipcMain.on('start-live-system-capture', (event) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('live-system-audio-chunk', wav.toBuffer())
       }
-    }, 7000)
+    }, 6000)
   } catch (e) {
     console.error('Live Capture Error:', e)
   }

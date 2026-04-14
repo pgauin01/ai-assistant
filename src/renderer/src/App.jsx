@@ -599,7 +599,6 @@ function App() {
   }
 
   const handleContextualAction = async (actionType) => {
-    // Seal current audio block so subsequent speech starts a fresh bubble.
     activeAudioIdRef.current = null
     const summaryContext = editableSummary.trim()
 
@@ -607,32 +606,40 @@ function App() {
     const liveMsg = [...messages].reverse().find((m) => m.content?.includes('[Live System Audio]'))
     const rawText = liveMsg ? liveMsg.content.replace('🎧 **[Live System Audio]:**', '').trim() : ''
 
-    // --- NEW: Build Conversation History ---
-    // Grab the last 6 messages to provide rolling context without overflowing the prompt
-    const recentMessages = messages.slice(-6)
+    // --- OPTIMIZED: Build Conversation History ---
+    const recentMessages = messages.slice(-4)
     const conversationHistory = recentMessages
       .map((m) => {
-        // Differentiate who said what for the LLM
-        const speaker = m.content?.includes('[Live System Audio]')
-          ? 'Interviewer'
-          : 'My Previous Answer'
-        return `${speaker}:\n${m.content}`
+        let text = m.content || ''
+        text = text.replace('🎧 **[Live System Audio]:**', '').trim()
+        const isInterviewer = m.content?.includes('[Live System Audio]')
+        const speaker = isInterviewer ? 'Q' : 'A'
+
+        // Truncate past AI answers to save tokens
+        if (!isInterviewer && text.length > 250) {
+          text = text.substring(0, 250) + '\n...[TRUNCATED]'
+        }
+        return `${speaker}: ${text}`
       })
       .join('\n\n')
 
-    // --- Build the Hybrid Context Block ---
+    // --- NEW: CONDITIONAL CONTEXT BLOCK ---
     let contextBlock = ''
 
-    if (summaryContext) {
-      contextBlock += `[USER SUMMARY / OVERARCHING GOAL]:\n"${summaryContext}"\n\n`
+    // 🚨 ONLY inject your resume summary if the button pressed actually needs it!
+    const needsResume = ['career', 'behavioral', 'full_analysis'].includes(actionType)
+
+    if (summaryContext && needsResume) {
+      contextBlock += `[USER SUMMARY]\n${summaryContext}\n\n`
     }
 
+    // Always include history and the current question
     if (conversationHistory) {
-      contextBlock += `[RECENT CONVERSATION HISTORY] (Use this to resolve pronouns like "that" or "it"):\n${conversationHistory}\n\n`
+      contextBlock += `[RECENT CONVERSATION HISTORY]\n${conversationHistory}\n\n`
     }
 
     if (rawText) {
-      contextBlock += `[CURRENT QUESTION TO ANSWER]:\n"${rawText}"`
+      contextBlock += `[RAW AUDIO TRANSCRIPT]\n${rawText}`
     }
 
     if (!contextBlock) {
@@ -640,8 +647,7 @@ function App() {
       return
     }
 
-    console.log('Context Block for Action:', contextBlock)
-
+    console.log('Constructed Context Block for Action:', { actionType, contextBlock })
     let displayCommand = ''
     let augmentedPrompt = ''
 
