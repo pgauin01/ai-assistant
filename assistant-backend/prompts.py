@@ -176,7 +176,10 @@ If the extraction contains starter code, asks for an algorithm, or says "Write a
 2. Format EXACTLY with these headings IN THIS EXACT ORDER (ALL SECTIONS ARE MANDATORY — DO NOT SKIP ANY):
 
    ### Code Implementation (Optimal Approach)
-   [Write clean, maintainable production code for Approach 3. INCLUDE ESSENTIAL IMPORTS if required for type-safety or framework logic. Must include inline comments and edge case handling.]
+   [Write clean, maintainable production code. INCLUDE ESSENTIAL IMPORTS if required for type-safety or framework logic.CRITICAL : Must include inline comments and edge case handling , Must include example usage.]
+
+   ### Example Usage (MANDATORY)
+   [Provide at least one example call with input and output]
 
    ### Complexity & Strategy
    [Briefly state Time Complexity O() and Space Complexity O(). Explain in 1-2 sentences why this is the best pragmatic approach over naive methods.]
@@ -189,6 +192,7 @@ GLOBAL RULES:
 2. Output ONLY the requested headings and content. NO chatbot fluff, NO "Here is your explanation".
 3. If ANY section is missing or incomplete, the response is INVALID.
 4. The Step-by-Step Walkthrough section is REQUIRED and cannot be skipped under any condition.
+5. If Example Usage section is missing, the response is INVALID.
 """
 
 VISION_CLASSIFY_PROMPT = """

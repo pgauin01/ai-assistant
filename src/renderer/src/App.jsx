@@ -31,6 +31,7 @@ const SLASH_COMMANDS = [
 
 const BACKEND_BASE_URL = 'http://127.0.0.1:8000'
 const LIVE_AUDIO_PREFIX = '🎧 **[Live System Audio]:**'
+const SMART_SCROLL_THRESHOLD_PX = 100
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const createMeetingSessionId = () =>
@@ -83,6 +84,7 @@ function App() {
   const isLiveTranscribingRef = useRef(false)
   const liveWsRef = useRef(null)
   const activeAudioIdRef = useRef(null)
+  const isNearBottomRef = useRef(true)
   const meetingSessionIdRef = useRef(createMeetingSessionId())
   const [isSaving, setIsSaving] = useState(false)
   const [isBackendReady, setIsBackendReady] = useState(false)
@@ -299,9 +301,25 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (transcriptRef.current) {
-      transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight
+    const transcriptEl = transcriptRef.current
+    if (!transcriptEl) return undefined
+
+    const updateNearBottom = () => {
+      const distanceFromBottom =
+        transcriptEl.scrollHeight - transcriptEl.scrollTop - transcriptEl.clientHeight
+      isNearBottomRef.current = distanceFromBottom <= SMART_SCROLL_THRESHOLD_PX
     }
+
+    updateNearBottom()
+    transcriptEl.addEventListener('scroll', updateNearBottom, { passive: true })
+
+    return () => transcriptEl.removeEventListener('scroll', updateNearBottom)
+  }, [])
+
+  useEffect(() => {
+    const transcriptEl = transcriptRef.current
+    if (!transcriptEl || !isNearBottomRef.current) return
+    transcriptEl.scrollTop = transcriptEl.scrollHeight
   }, [messages, isThinking])
 
   useEffect(() => {
@@ -884,6 +902,11 @@ function App() {
       return
     }
 
+    if (text.toLowerCase() === '/clear' || text.toLowerCase() === '/cl') {
+      resetConversationState()
+      return
+    }
+
     // 1. Handle Exit Command
     if (text.toLowerCase() === '/exit') {
       const dateStr = new Date().toISOString().replace(/[:.]/g, '-')
@@ -1172,6 +1195,37 @@ function App() {
     }, 400)
   }
 
+  const resetConversationState = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+
+    const ws = liveWsRef.current
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+      ws.close()
+    }
+    liveWsRef.current = null
+    window.api?.stopLiveSystemCapture?.()
+
+    setMessages([])
+    messagesRef.current = []
+
+    activeAudioIdRef.current = null
+    audioChunksRef.current = []
+    setPendingCommand(null)
+    setIsThinking(false)
+    setIsListening(false)
+    setIsRecording(false)
+    isRecordingRef.current = false
+    setIsLiveTranscribing(false)
+    meetingSessionIdRef.current = createMeetingSessionId()
+    isNearBottomRef.current = true
+
+    setInput('')
+    setInputText('')
+  }, [])
+
   const toggleRecording = async (e) => {
     if (e) {
       e.preventDefault()
@@ -1197,8 +1251,7 @@ function App() {
       return
     }
     if (commandId === 'clear' || commandId === 'cl') {
-      setMessages([])
-      setInput('')
+      resetConversationState()
       return
     }
     if (commandId === 'exit') {
@@ -1311,9 +1364,7 @@ function App() {
         pendingCommand === '/cl' ||
         input.trim() === '/cl'
       ) {
-        setPendingCommand(null) // Kill the vision state
-        setMessages([]) // Clear the messages
-        setInput('') // Reset input
+        resetConversationState()
         return
       }
 

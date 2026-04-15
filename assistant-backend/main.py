@@ -540,17 +540,27 @@ async def execute_command(command: UserCommand):
     formatted_messages = []
     
     if needs_rag:
-        # It's a Career question, so inject the FAISS context!
-        system_prompt = CAREER_AGENT_PROMPT.format(context=context).strip()
+        # 🚨 THE FIX: Delete CAREER_AGENT_PROMPT. Let React be the only boss!
+        system_prompt = f"BACKGROUND CONTEXT FROM VECTOR DB:\n{context}\n\nYou are an elite interview assistant. Follow the instructions in the user's prompt perfectly."
         formatted_messages.append(SystemMessage(content=system_prompt))
-        formatted_messages.append(HumanMessage(content=question))
         
+        # 🚨 ADD MEMORY: Inject historical messages so Career mode remembers context
+        for msg in command.messages[:-1]:
+            if msg.role == "user":
+                formatted_messages.append(HumanMessage(content=msg.content))
+            elif msg.role == "assistant":
+                formatted_messages.append(AIMessage(content=msg.content))
+                
+        # Inject the final, highly-structured prompt from React
+        if command.messages:
+            last_user_text = command.messages[-1].content
+            formatted_messages.append(HumanMessage(content=last_user_text))
+        else:
+            formatted_messages.append(HumanMessage(content=command.text))
+            
     else:
         # 🚨 THE GHOST CONTEXT FIX 🚨
-        # If the action is coding, concept, or strategy, React has ALREADY created a perfect prompt.
-        # We MUST bypass the Python FAST_CODING_PROMPT so we don't accidentally inject the Advanced RAG tech_stack!
-        
-        if incoming_action in ["coding", "concept", "strategy", "quick_answer", "system_design"]:
+        if incoming_action in ["coding", "concept", "strategy", "quick_answer", "system_design", "full_analysis"]:
             system_prompt = "You are an elite interview assistant. Follow the user's prompt instructions strictly."
             formatted_messages.append(SystemMessage(content=system_prompt))
         else:

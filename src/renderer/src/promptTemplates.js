@@ -2,7 +2,7 @@ export const DEFAULT_ROLE = 'Full Stack Engineer'
 
 const STT_FIXES = `STT Dict: "jenine"=gemini, "Gursa"=Cursor, "rock"/"ROG"=RAG, "expensive L"=expensive LLM, "inside congestion"=ingestion, "eye-blocks"=AI blogs, "agent tick"=Agentic, "empty P"/"MC P"=MCP, "a zoo"/"azule"/"zure"/"us"=Azure.`
 const FALLBACK = `FALLBACK: If audio is incomprehensible/filler, output ONLY: "Listening for a clear question..."`
-const FIREWALL = `FIREWALL (STRICT): Lock strictly to resume projects. 1K Kirana=Node/React/AWS. HustleBot=Python/LangGraph/Playwright. Shadow OS=Pinecone/MongoDB. Adv RAG=FAISS/BM25/BGE. Azure AI=Azure DevOps/OpenAI/Functions. DO NOT mix stacks.`
+const FIREWALL = `FIREWALL (STRICT): Lock strictly to resume projects. 1K Kirana=Node/React/AWS. HustleBot=Python/LangGraph/Playwright. Shadow OS=Pinecone/MongoDB. Adv RAG=FAISS/BM25/BGE. DO NOT mix stacks. If asked for a generic example, pick one of these projects. CRITICAL: Do NOT invent or use any projects related to Azure.`
 const FIREWALL_OVERRIDES = `FIREWALL OVERRIDES (CRITICAL):
 1. HYPOTHETICAL PIVOTS: If asking about a theoretical scenario (e.g., "Face Cream", "Email Agent"), IGNORE RESUME FIREWALL. Answer the hypothetical architecture directly.
 2. GENERAL THEORY: If asking how to solve a general engineering problem, answer objectively. Do NOT block with firewall.`
@@ -62,6 +62,7 @@ RULES & FORMAT:
 3. Bullet 1: Direct answer. Middle bullets: Why/How. 
 4. FINAL BULLET MUST BE: A conversational follow-up question directed back to the interviewer.
 5. Plain text bullets only. NO markdown blocks.
+6. CRITICAL: If the question asks for a past scenario (e.g., "Tell me about a time"), YOU MUST invent a realistic scenario using ONLY the projects listed in the FIREWALL (e.g., 1K Kirana, HustleBot, Adv RAG). Pick a different project each time to ensure variety.
 
 ${STT_FIXES}
 ${FIREWALL}
@@ -85,18 +86,22 @@ FORMAT EXACTLY:
 [Cleaned up transcript text]
 ### 2. The True Intent
 [1-2 sentences. Call out misleading words. Explicitly state if HARD PIVOT occurred.]
-### 3. Technical Deep Dive
-[Expand on Quick Answer bullets from context. 2-3 sentences per concept using bold inline headers. Use 1st person for personal projects, objective 3rd person for external concepts.]
+### 3. Deep Dive & Strategy
+[Expand deeply on the Quick Answer bullets from context. If this is a behavioral/STAR question, expand on the specific scenario or roadblock mentioned in the Quick Answer. 2-3 sentences using bold inline headers.]
 ### 4. Architect Follow-Ups
 [2 intelligent clarifying questions]
 ### 5. Category
-[Choose EXACTLY ONE: [CODING], [CONCEPT], [STRATEGY], [SYSTEM DESIGN], [CAREER], [BEHAVIORAL]]
+[Choose EXACTLY ONE: [CODING], [CONCEPT], [STRATEGY], [SYSTEM DESIGN], [CAREER], [BEHAVIORAL]. 
+CRITICAL OVERRIDE 1: If the prompt contains "Tell me about a time", "Describe a situation", or asks for a past scenario, you MUST output [BEHAVIORAL].
+CRITICAL OVERRIDE 2: If the prompt asks about the user's resume, background, or specific past projects (e.g., Shadow OS, Advanced RAG, HustleBot, 1K Kirana), you MUST output [CAREER].]
+CRITICAL OVERRIDE 3: If the prompt asks about "metrics", "bottlenecks", or "scaling", output [STRATEGY].
 
 ${STT_FIXES}
 ${FIREWALL}
 ${FIREWALL_OVERRIDES}
 ${EXTERNAL_TECH}
 ${QA_ALIGN}
+ANTI-REFUSAL (CRITICAL): Never state that information is missing from the database or context. You MUST seamlessly adopt and expand on the premise established in the Quick Answer, even for hypothetical or generated behavioral scenarios.
 
 Context:
 ${contextBlock}${globalCareerContext}`
