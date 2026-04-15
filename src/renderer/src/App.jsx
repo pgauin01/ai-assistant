@@ -1493,6 +1493,24 @@ function App() {
     }
   }
 
+  const postVisionRequestWithTimeout = async (payload) => {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => {
+      controller.abort()
+    }, 10000)
+
+    try {
+      return await fetch(`${BACKEND_BASE_URL}/agent/vision`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      })
+    } finally {
+      clearTimeout(timeoutId)
+    }
+  }
+
   const handleSmartVision = async () => {
     window.api.hideOverlay()
     setVisionMode('smart')
@@ -1505,11 +1523,7 @@ function App() {
     setMessages(newMessages)
 
     try {
-      const res = await fetchBackend('/agent/vision', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages })
-      })
+      const res = await postVisionRequestWithTimeout({ messages: newMessages })
       const data = await res.json()
 
       if (data.status === 'needs_confirmation') {
@@ -1526,6 +1540,16 @@ function App() {
         setMessages((prev) => [...prev, { role: 'assistant', content: data.response }])
       }
     } catch (error) {
+      if (error.name === 'AbortError') {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: 'Analysis timed out after 10 seconds. Please try a smaller snippet.'
+          }
+        ])
+        return
+      }
       setMessages((prev) => [
         ...prev,
         { role: 'assistant', content: 'Network Error: Could not reach the AI backend.' }
@@ -1578,11 +1602,7 @@ function App() {
     setMessages(newMessages)
 
     try {
-      const res = await fetchBackend('/agent/vision', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages })
-      })
+      const res = await postVisionRequestWithTimeout({ messages: newMessages })
       const data = await res.json()
 
       if (data.status === 'needs_confirmation') {
@@ -1599,6 +1619,16 @@ function App() {
         setMessages((prev) => [...prev, { role: 'assistant', content: data.response }])
       }
     } catch (error) {
+      if (error.name === 'AbortError') {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: 'Analysis timed out after 15 seconds. Please try a smaller snippet.'
+          }
+        ])
+        return
+      }
       // This will now ONLY trigger if the Python server is actually offline
       setMessages((prev) => [
         ...prev,
