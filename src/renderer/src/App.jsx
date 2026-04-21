@@ -955,7 +955,7 @@ function App() {
           messages: rollingContextMessages,
           tech_stack: techStack,
           model_name: selectedModel,
-          action: actionType
+          action: actionType || 'chat'
         })
       })
 

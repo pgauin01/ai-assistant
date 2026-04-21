@@ -29,7 +29,8 @@ from prompts import (
     VISION_FIX_PROMPT,
     VISION_CREATE_PROMPT,
     VISION_MCQ_PROMPT,
-    VISION_CLASSIFY_PROMPT
+    VISION_CLASSIFY_PROMPT,
+    SPOKEN_RAG_PROMPT_TEMPLATE
 )
 
 
@@ -506,13 +507,20 @@ async def execute_command(command: UserCommand):
     needs_rag = incoming_action in ["career", "behavioral", "full_analysis"]
     
     # Fallback for standard typing in the chatbox
-    career_triggers = ["experience", "resume", "project", "portfolio", "interview", "hustlebot", "shadow os", "kirana", "ragchatbot"]
+    # career_triggers = ["experience", "resume", "project", "portfolio", "interview", "hustlebot", "shadow os", "kirana", "ragchatbot"]
+    career_triggers = [
+        "experience", "resume", "project", "portfolio", "interview", 
+        "hustlebot", "hustle bot",    # Added spaced version!
+        "shadow os", "shadowos",     # Added combined version!
+        "kirana", "1k kirana", 
+        "ragchatbot", "rag chatbot", "advanced rag"
+    ]
     if incoming_action == "chat" and any(kw in user_text_lower for kw in career_triggers):
         needs_rag = True
 
     context = ""
     question = command.text
-
+    print(f"[DEBUG] Incoming action: {incoming_action}, needs RAG: {needs_rag}")
     # --- FAISS / CAREER ROUTE HANDLING ---
     if needs_rag:
         try:
@@ -541,7 +549,8 @@ async def execute_command(command: UserCommand):
     
     if needs_rag:
         # 🚨 THE FIX: Delete CAREER_AGENT_PROMPT. Let React be the only boss!
-        system_prompt = f"BACKGROUND CONTEXT FROM VECTOR DB:\n{context}\n\nYou are an elite interview assistant. Follow the instructions in the user's prompt perfectly."
+        # system_prompt = f"BACKGROUND CONTEXT FROM VECTOR DB:\n{context}\n\nYou are an elite interview assistant. Follow the instructions in the user's prompt perfectly."
+        system_prompt = SPOKEN_RAG_PROMPT_TEMPLATE.format(context_block=context)
         formatted_messages.append(SystemMessage(content=system_prompt))
         
         # 🚨 ADD MEMORY: Inject historical messages so Career mode remembers context
