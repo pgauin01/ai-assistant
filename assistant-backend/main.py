@@ -619,7 +619,10 @@ async def execute_command(command: UserCommand):
 @app.post("/agent/moondream-pipeline")
 async def run_moondream_pipeline(command: UserCommand):
     try:
-        screenshot = ImageGrab.grab()
+        # Target crop box (left, top, right, bottom)
+        crop_box = (52, 290, 956, 640)
+        screenshot = ImageGrab.grab(bbox=crop_box)
+        screenshot.save("debug_crop.png")
     except Exception as e:
         # Return a clear failure instead of an opaque crash so frontend can surface it.
         raise HTTPException(status_code=500, detail=f"Failed to capture screen: {e}")
@@ -678,21 +681,12 @@ You MUST strictly format your response using the following Markdown headers. If 
 """
     
     raw_extraction = ""
-    moondream_api_key = get_moondream_api_key()
-    if not moondream_api_key:
-        raise HTTPException(status_code=503, detail="MOONDREAM_API_KEY is missing in backend environment.")
-
+    print("[FAST OCR] Running local Tesseract on the cropped image...")
     try:
-        moondream_cloud = md.vl(api_key=moondream_api_key)
-        moondream_result = moondream_cloud.query(screenshot, prompt_text)
-        print(f"[MOONDREAM] cloud result type={type(moondream_result)}")
-        print(f"[MOONDREAM] cloud result={moondream_result}")
-        if isinstance(moondream_result, dict):
-            raw_extraction = (moondream_result.get("answer") or "").strip()
-        else:
-            raw_extraction = str(moondream_result).strip()
-    except Exception as cloud_error:
-        raise HTTPException(status_code=503, detail=f"Moondream cloud query failed: {cloud_error}")
+        raw_extraction = extract_text_from_image(screenshot)
+        print(f"[FAST OCR] Extraction Success. Length: {len(raw_extraction)}")
+    except Exception as ocr_error:
+        raise HTTPException(status_code=500, detail=f"Local OCR failed: {ocr_error}")
 
 
     vision_task = f"""
