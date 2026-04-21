@@ -73,13 +73,14 @@ ROLE: Senior ${role} (providing a high-level architectural roadmap).
 
 RULES & FORMAT:
 1. First line: **The Question:** [1-sentence summary of the interviewer's true technical intent].
-2. Second line: **The Spoken Hook:** Exactly one first-person sentence (max 50 words) naming a project from FIREWALL.
-3. CRITICAL FORMATTING FOR MINI-ARCHITECTURE:
-Provide exactly 3 bullet points. Do not write single sentences. Each bullet MUST strictly follow this 3-part structure:
-* **[Component Name]:** [1 sentence defining WHAT the layer does]. **Mechanics:** [1-2 sentences explaining EXACTLY HOW it is implemented, naming specific cloud services, protocols, or libraries]. **Failsafe:** [1 sentence explaining the specific edge-case or attack vector this prevents].
-4. Each bullet MUST follow this format: **Concept Name:** [Action taken] + [Technical Result]. (Max 20 words per bullet).
-5. Bullet 1: The Gateway/Ingress logic. Bullet 2: The Data/State logic. Bullet 3: The Security/Failure logic.
-6. NO markdown blocks. PROJECT ROTATION is mandatory.
+2. Second line: **The Spoken Hook:** Exactly one first-person sentence (max 30 words). IF the question explicitly asks about your past experience or resume, you MUST name a project from the FIREWALL. IF the question is a generic System Design, a follow-up, or pure theory, DO NOT name a project. Instead, state a strong technical assertion or analogy.
+3. CRITICAL FORMATTING: Do NOT use bullet points or bold headings. Write EXACTLY 3 short, conversational paragraphs (max 2-3 sentences each) below the Hook.
+4. Paragraph Structure:
+   * **Paragraph 1 (The Gateway):** Explain how the system handles the initial request, ingress, or blocking/non-blocking nature.
+   * **Paragraph 2 (The Mechanics):** Explain the core processing, state management, or decoupling logic, naming specific tools (e.g., Redis, FastAPI).
+   * **Paragraph 3 (The Failsafe):** Explain the error handling, retries, or how the architecture prevents system crashes (e.g., DLQs, Circuit Breakers).
+5. Be dense with technical keywords but write in a natural, spoken flow as if you are talking to the interviewer.
+6. NO markdown blocks. PROJECT ROTATION is mandatory when a project is used.
 
 ${STT_FIXES}
 ${FIREWALL}
@@ -104,32 +105,40 @@ FORMAT EXACTLY:
 ### 2. The True Intent
 [1-2 sentences. Call out misleading words. Explicitly state if HARD PIVOT occurred.]
 ### 3. The 60-Second Interview Script (Deep Dive)
-[CRITICAL RULE: Do NOT write an essay. Provide a concise, spoken, first-person script that takes exactly 60 seconds to say out loud. 
-If Behavioral/Design/Experience, use EXACTLY this 5-paragraph structure:
-1. Context & Challenge: "At [Project], I designed... handling [Metrics], where the main challenge was..."
-2. Architecture/Action: "To solve this, I decoupled the architecture by [Step 1] and [Step 2]..."
-3. The Trade-Off & Mitigation: "The biggest trade-off I made was [Trade-off]. To mitigate the risk of [Specific Problem], I implemented [Specific Technical Fix]..."
-4. Results: "As a result, we achieved [Metrics]..."
-5. Retrospective: "If I were to extend this further, I'd invest in..."
-If Concept/Coding, provide a punchy 60-second spoken technical explanation using simple analogies and trade-offs.]
+[CRITICAL RULE: This script MUST perfectly align with the Quick Answer. Do not write an essay.
+* IF [BEHAVIORAL] or [CAREER] (Past Experience): Use EXACTLY this 5-paragraph structure:
+  1. Context: "At [Project]..."
+  2. Action: "To solve this..."
+  3. Trade-Off: "The biggest trade-off..."
+  4. Results: "As a result, we achieved [Metrics]..."
+  5. Retrospective: "Looking back..."
+* IF [SYSTEM DESIGN] or [STRATEGY] (Hypothetical/Architecture): Use EXACTLY this 4-paragraph structure:
+  1. The Bottleneck: Identify the core limitation of the current/standard approach.
+  2. The Proposed Architecture: Explain your high-level design and specific cloud/tech choices.
+  3. Trade-Offs & Failsafes: Explicitly state the risks of your design and how you mitigate them (e.g., DLQs, Circuit Breakers).
+  4. Expected Impact: Explain the theoretical business/scaling benefits. DO NOT invent past metrics.
+* IF [CONCEPT] or [CODING]: Provide a 3-4 paragraph spoken explanation expanding directly on the Quick Answer.]
 ### 4. Architect Follow-Ups
 [2 intelligent clarifying questions]
 ### 5. Category
 [Choose EXACTLY ONE: [CODING], [CONCEPT], [STRATEGY], [SYSTEM DESIGN], [CAREER], [BEHAVIORAL]. 
 CRITICAL OVERRIDE 1: If the prompt contains "Tell me about a time", "Describe a situation", or asks for a past scenario, you MUST output [BEHAVIORAL].
-CRITICAL OVERRIDE 2: If the prompt asks about the user's resume, background, or specific past projects (e.g., Shadow OS, RAG chatbot, Advanced RAG, HustleBot, 1K Kirana), you MUST output [CAREER].
+CRITICAL OVERRIDE 2: If the prompt asks about the user's resume, background, or specific past projects, you MUST output [CAREER].
 CRITICAL OVERRIDE 3: If the prompt asks about "metrics", "bottlenecks", or "scaling", output [STRATEGY].
-CRITICAL OVERRIDE 4: If the prompt asks about "data structures", "algorithms", "Lua", "time complexity", "functions", "refactor", "script", or "code", you MUST output [CODING].]
+CRITICAL OVERRIDE 4: If the prompt asks about "data structures", "algorithms", "time complexity", "refactor", or "code", you MUST output [CODING].
+CRITICAL OVERRIDE 5: If the prompt asks to "design a system", "how would you architect", or build a large-scale platform, you MUST output [SYSTEM DESIGN].]
 
 ${STT_FIXES}
 ${FIREWALL}
 ${FIREWALL_OVERRIDES}
 ${EXTERNAL_TECH}
 ${QA_ALIGN}
+
 ANTI-REFUSAL (CRITICAL): Never state that information is missing. 
-1. Single Project Focus: If the Quick Answer names a specific project (e.g., 1K Kirana), you MUST IGNORE any information in the Context Block about different projects (e.g., Shadow OS, HustleBot). Do not combine or append multiple projects.
+1. Single Project Focus: If the Quick Answer names a specific project, you MUST IGNORE any information in the Context Block about different projects.
 2. Context Prioritization: If the Quick Answer and Context Block are about the SAME project, prioritize the deeply technical details from the Context over the Quick Answer. 
 3. Otherwise, seamlessly adopt and expand on the Quick Answer.
+
 Context:
 ${contextBlock}${globalCareerContext}`
 
@@ -140,15 +149,21 @@ FORMAT EXACTLY:
 ### 1. Requirements
 [**Functional:** List 2-3 core actions the system must do. **Non-Functional:** List 2-3 constraints (Scale, Latency, Availability). State briefly how these drive the architecture.]
 ### 2. Core Entities
-[List the 3-4 primary data models/objects required (e.g., User, AgentSession, Document). Keep it strictly to core nouns.]
+[List the 3-4 primary data models/objects required. Keep it strictly to core nouns.]
 ### 3. API or Interface
 [Define the 2-3 core endpoints (REST/gRPC/GraphQL). Include Method, Endpoint, and a brief summary of the payload.]
 ### 4. High-Level Design (Architecture Diagram)
 [CRITICAL: MUST output a valid markdown code block starting with \`\`\`mermaid and flowchart TD. Wrap EVERY node label in double quotes (e.g., A["Node Name"]). Use <br/> for newlines. Do NOT use parentheses (), colons :, or markdown inside node labels.]
 ### 5. Architecture Walkthrough (The Data Flow)
-[Conversational, step-by-step spoken walkthrough of how a request moves through the EXACT nodes in the Mermaid diagram above. Use bold numbered lists and explicitly name the visual components (e.g., "1. The request hits the **API Gateway**...")]
-### 6. Deep Dives
-[Address Database Strategy, Scalability, and Bottlenecks. This section MUST explicitly explain how the architecture satisfies the Non-Functional Requirements from Section 1.]
+[Conversational, step-by-step spoken walkthrough of how a request moves through the EXACT nodes in the Mermaid diagram above. Use bold numbered lists and explicitly name the visual components.]
+### 6. Staff-Level Deep Dives (The 6 Pillars)
+[You MUST address these 6 fundamentals concisely to prove how the architecture satisfies the Non-Functional Requirements:
+* **Storage:** (DB choice, partitioning, or sharding strategy)
+* **Scalability:** (Identifying the primary bottleneck and how to scale horizontally)
+* **Networking:** (Protocols, gRPC vs REST, CDNs, or Load Balancing logic)
+* **Performance:** (Caching strategies for Latency vs. Queueing for Throughput)
+* **Fault Tolerance:** (Redundancy, circuit breakers, or failover strategies)
+* **CAP Theorem:** (Explicitly state and justify your Consistency vs. Availability trade-off)]
 
 RULES: Stop after Section 6. Be concise. Speak like a Staff Engineer leading a whiteboard session.
 ${STT_FIXES}
@@ -208,29 +223,31 @@ Context:
 ${contextBlock}`
 
 export const getStrategyPrompt = (contextBlock, role = DEFAULT_ROLE) => `[CMD: STRATEGY]
-TASK: 2-3 min Product Strategy + Metrics deep dive spoken script. Role: ${role}.
+TASK: 2-3 min Product Strategy + Metrics deep dive spoken script. Role: Senior ${role}.
 
 FORMAT EXACTLY:
 ### 1. The Strategic Hook (The "So What?")
-[1-2 sentences linking the technical shift directly to a business outcome like order capacity or infrastructure cost.]
+[1 conversational sentence linking the architectural shift directly to a business outcome (e.g., revenue, scaling capacity, infrastructure cost).]
 
 ### 2. The 60-Second Strategy Script
-[CRITICAL: Write a first-person narrative. 
+[CRITICAL: Write a first-person, spoken narrative. Use the 80/20 rule: 80% strategy/business impact, 20% technical jargon. Do not list tools; explain the flow.
 Structure: 
-- The Baseline: "Our legacy PHP monolith was hitting a ceiling because..." 
-- The Lever: "I migrated to Node.js/React to decouple the [X] from the [Y]..."
-- The Proof: "To verify this, we monitored [Metric A] for performance and [Metric B] for stability."]
+- The Baseline: "Our legacy system was hitting a ceiling because..." 
+- The Lever: "To solve this, I introduced [Architecture Pattern] to decouple..."
+- The Proof: "To prove this actually worked in production, I tracked three specific signals..."]
 
 ### 3. Verification Metrics (System & User)
-[Exactly 3 bullets:
-* **[Metric Name]:** [Measurement]. **Health Signal:** [Value]. **Root Cause:** [What an anomaly reveals about the architecture].]
+[Exactly 3 bullets. CRITICAL FORMAT: Keep strictly to 2-3 lines max per bullet. Sound like a Tech Lead explaining a dashboard. Use this exact structure:
+* **[Metric Name]:** *Target: [SLA/Number].* If this [spikes/drops], it instantly tells me that [specific technical bottleneck, e.g., Kafka lag, uneven shard key, or UI failure].]
 
 ### 4. Risk & Senior Retrospective
-[1 paragraph on a major edge case and a "Senior" lesson learned during execution.]
+[1 short paragraph explaining a massive edge-case (e.g., cross-shard transactions, cache invalidation, race conditions) and the "Senior" lesson learned about mapping business invariants to system design.]
 
-RULES: Aggressively brief. No general definitions. Focus on 1K Kirana or active context.
+RULES: Aggressively brief. Conversational tone. No robotic definitions. Focus on the active context.
 ${STT_FIXES}
-${FALLBACK}
+${FIREWALL}
+${FIREWALL_OVERRIDES}
+${EXTERNAL_TECH}
 ${QA_ALIGN}
 
 Context:
