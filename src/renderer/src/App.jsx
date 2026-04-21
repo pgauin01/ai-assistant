@@ -360,96 +360,49 @@ function App() {
     }
   }, [])
 
+  const handleCtrlWCapture = async () => {
+    try {
+      // Hit the new dedicated OCR endpoint (no body needed, Python grabs the screen)
+      const res = await fetch('http://127.0.0.1:8000/agent/ocr-only', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      
+      const data = await res.json()
+      
+      if (data.text) {
+        console.log('[FRONTEND DEBUG] OCR Result:', data.text)
+        
+        // Drop the text into the input box and append the /c suffix
+        const prefilledText = `${data.text}\n\n/c`
+        
+        setInputText(prefilledText)
+        setInput(prefilledText) // Adjust based on your actual state variable name
+        
+        // Focus the input box and move cursor to the end
+        setTimeout(() => {
+          if (inputRef.current) {
+            inputRef.current.focus()
+            inputRef.current.selectionStart = prefilledText.length
+            inputRef.current.selectionEnd = prefilledText.length
+          }
+        }, 50)
+      }
+    } catch (error) {
+      console.error('OCR Capture failed:', error)
+    }
+  }
+
   useEffect(() => {
     if (window.api && window.api.onMoondreamTrigger) {
       const cleanup = window.api.onMoondreamTrigger(() => {
-        void (async () => {
-          const tempId = Date.now()
-          const aiId = `${tempId}-ai`
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: tempId,
-              role: 'system',
-              content: '📸 Capturing screen & running Moondream analysis...'
-            }
-          ])
-          setIsThinking(true)
-
-          try {
-            const response = await fetchBackend('/agent/moondream-pipeline', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                model_name: selectedModel,
-                tech_stack: techStack
-              })
-            })
-
-            if (!response.ok || !response.body) {
-              throw new Error(`Moondream pipeline request failed (${response.status})`)
-            }
-
-            const reader = response.body.getReader()
-            const decoder = new TextDecoder('utf-8')
-            let aiText = ''
-
-            setMessages((prev) => [
-              ...prev.filter((msg) => msg.id !== tempId),
-              { id: aiId, role: 'assistant', content: '' }
-            ])
-
-            while (true) {
-              const { value, done } = await reader.read()
-              if (done) break
-              aiText += decoder.decode(value, { stream: true })
-              setMessages((prev) => {
-                const newMessages = [...prev]
-                const targetIndex = newMessages.findIndex((msg) => msg.id === aiId)
-                if (targetIndex !== -1) {
-                  newMessages[targetIndex] = {
-                    ...newMessages[targetIndex],
-                    content: aiText
-                  }
-                }
-                return newMessages
-              })
-              await new Promise((resolve) => requestAnimationFrame(resolve))
-            }
-          } catch (error) {
-            console.error('Moondream Pipeline Failed:', error)
-            setMessages((prev) => {
-              const withoutTemp = prev.filter((msg) => msg.id !== tempId)
-              const hasAiMessage = withoutTemp.some((msg) => msg.id === aiId)
-              if (hasAiMessage) {
-                return withoutTemp.map((msg) =>
-                  msg.id === aiId
-                    ? {
-                        ...msg,
-                        content: 'Moondream pipeline failed. Check backend logs and retry.'
-                      }
-                    : msg
-                )
-              }
-              return [
-                ...withoutTemp,
-                {
-                  id: aiId,
-                  role: 'assistant',
-                  content: 'Moondream pipeline failed. Check backend logs and retry.'
-                }
-              ]
-            })
-          } finally {
-            setIsThinking(false)
-          }
-        })()
+        void handleCtrlWCapture()
       })
       return () => cleanup?.()
     }
 
     return undefined
-  }, [selectedModel, techStack])
+  }, [])
 
   // 2. Stream the Rust audio to Python
   useEffect(() => {
@@ -894,8 +847,9 @@ function App() {
   }
 
   const sendTextMessage = async (displayCommand, augmentedPrompt = null, actionType = null) => {
-    const payloadText = augmentedPrompt || displayCommand
-    const text = payloadText.trim()
+    let payloadText = augmentedPrompt || displayCommand
+    let text = payloadText.trim()
+    const rawInput = (displayCommand || '').trim()
 
     if (!text) {
       showMicToast('Cannot send an empty command.')
@@ -924,6 +878,49 @@ function App() {
       }
       return
     }
+
+    // --- NEW: Intercept Suffix manual commands ---
+    if (!augmentedPrompt) {
+      // 1. Handle standalone Z-macros (e.g., "/z-rag" with no extra text)
+      if (rawInput.match(/^\/z-[a-z0-9-]+$/i)) {
+        const commandId = rawInput.substring(1).toLowerCase()
+        let project = ''
+        if (commandId === 'z-hustlebot') project = 'hustle bot'
+        if (commandId === 'z-shadowos') project = 'shadow os'
+        if (commandId === 'z-kirana') project = 'kirana store'
+        if (commandId === 'z-rag') project = 'Advanced RAG Pipeline project'
+
+        if (project) {
+          displayCommand = `tell me about ${project}`
+          payloadText = `[Quick Command: CAREER]\nPlease answer the following interview question based on my local career database.\n\nQuestion:\n\ntell me about ${project}`
+          text = payloadText.trim()
+        }
+      } else {
+        // 2. Handle STRICT Suffix Commands (e.g., "code snippet \n /f")
+        // Regex strictly looks for the command at the end of the string
+        const suffixMatch = rawInput.match(/^(.*?)\s*\/(e|f|c|explain|fix|create|career)$/is)
+
+        if (suffixMatch) {
+          const baseQuery = suffixMatch[1].trim()
+          const commandId = suffixMatch[2].toLowerCase()
+
+          if (commandId === 'explain' || commandId === 'e') {
+            payloadText = `[Quick Command: EXPLAIN]\nPlease explain the following concept deeply and technically. You MUST include Time & Space Complexity, architectural details, and under-the-hood mechanics (like event loop blocking, memory management, threads, etc) if applicable.\n\nTarget to explain: ${baseQuery}`
+          } else if (commandId === 'fix' || commandId === 'f') {
+            payloadText = `[Quick Command: FIX]\nPlease analyze this broken code. You MUST provide:\n1. The exact bug and why it is breaking the old code.\n2. The corrected, production-ready code.\n3. A detailed explanation of the differences between the old and new code.\n\nCode to fix:\n\n${baseQuery}`
+          } else if (commandId === 'create' || commandId === 'c') {
+            payloadText = `[Quick Command: CREATE]\nPlease write a complete, production-ready program or script for this request. Include necessary imports, setup instructions, robust error handling, and a brief explanation of the architectural strategy used.\n\nCreation Request:\n\n${baseQuery}`
+          } else if (commandId === 'career') {
+            payloadText = `[Quick Command: CAREER]\nPlease answer the following interview question based on my local career database.\n\nQuestion:\n\n${baseQuery}`
+          }
+          text = payloadText.trim()
+        } else if (rawInput.startsWith('/')) {
+          showMicToast('Please provide your text followed by a suffix command like /c, /f, or /e.')
+          return
+        }
+      }
+    }
+    // --------------------------------------------------
 
     // 2. Setup UI State
     const userMessage = { role: 'user', content: displayCommand }

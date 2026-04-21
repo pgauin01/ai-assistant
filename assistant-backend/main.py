@@ -616,6 +616,24 @@ async def execute_command(command: UserCommand):
         }
     )
 
+@app.post("/agent/ocr-only")
+async def run_ocr_only():
+    try:
+        # 1. Grab and crop using the precise coordinates
+        crop_box = (52, 290, 956, 640)
+        screenshot = ImageGrab.grab(bbox=crop_box)
+        screenshot.save("debug_crop.png")
+
+        # 2. Extract text locally
+        print("[FAST OCR] Running local Tesseract...")
+        raw_extraction = extract_text_from_image(screenshot)
+        print(f"[FAST OCR] Success. Extracted {len(raw_extraction)} chars.")
+        
+        # 3. Return ONLY the text back to React. DO NOT trigger the LLM.
+        return {"status": "success", "text": raw_extraction.strip()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/agent/moondream-pipeline")
 async def run_moondream_pipeline(command: UserCommand):
     try:
